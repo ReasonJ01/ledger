@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ledger Load Simulator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #09101d;
+      --bg-glow: #16305d;
+      --panel: rgba(15, 22, 38, 0.92);
+      --panel-strong: #121b2f;
+      --border: #24314f;
+      --border-soft: #1b2740;
+      --text: #e7edfb;
+      --muted: #9aa8c7;
+      --heading: #c9d5f3;
+      --accent: #60a5fa;
+      --accent-strong: #3b82f6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "DM Sans", system-ui, sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(96, 165, 250, 0.16), transparent 28rem),
+        radial-gradient(circle at top right, rgba(34, 197, 94, 0.08), transparent 22rem),
+        linear-gradient(180deg, #0b1220 0%, var(--bg) 100%);
+      color: var(--text);
+    }
+    .topbar {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 1.1rem 1.25rem 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    .toplink {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 0.92rem;
+    }
+    .toplink:hover { color: #93c5fd; }
+    .page-shell {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 1rem 1.25rem 1.5rem;
+    }
+    .wrap {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    @media (max-width: 980px) {
+      .wrap { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1rem;
+      box-shadow: 0 22px 50px rgba(3, 8, 20, 0.28);
+      backdrop-filter: blur(10px);
+    }
+    .eyebrow {
+      margin: 0 0 0.25rem;
+      font-size: 0.76rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--accent);
+      font-weight: 600;
+    }
+    h1 { margin: 0 0 0.4rem; font-size: 1.9rem; letter-spacing: -0.03em; }
+    .sub { margin: 0 0 1rem; color: var(--muted); line-height: 1.5; max-width: 72ch; }
+    .row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.55rem; }
+    .row:last-child { margin-bottom: 0; }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.32rem;
+      min-width: 150px;
+      flex: 1 1 150px;
+    }
+    .field.action {
+      min-width: auto;
+      flex: 0 0 auto;
+      justify-content: flex-end;
+    }
+    .field-label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    input, button, select {
+      background: var(--panel-strong);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.55rem 0.75rem;
+      font-size: 0.9rem;
+      font-family: inherit;
+    }
+    button {
+      background: linear-gradient(135deg, var(--accent-strong), #2563eb);
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+      color: white;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    }
+    button:hover { filter: brightness(1.06); }
+    button.secondary {
+      background: #17233a;
+      border: 1px solid var(--border);
+      font-weight: 500;
+      color: var(--text);
+      box-shadow: none;
+    }
+    button.secondary:hover { background: #1d2b45; }
+    .label {
+      font-size: 0.74rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--heading);
+      margin: 0 0 0.45rem;
+      font-weight: 600;
+    }
+    .pill {
+      display: inline-block;
+      background: #0d1526;
+      border: 1px solid var(--border-soft);
+      border-radius: 999px;
+      padding: 0.4rem 0.7rem;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.8rem;
+      color: #d5e3ff;
+      margin-right: 0.4rem;
+      margin-bottom: 0.35rem;
+    }
+    pre {
+      margin: 0;
+      background: rgba(8, 13, 24, 0.72);
+      border: 1px solid var(--border-soft);
+      border-radius: 10px;
+      padding: 0.8rem;
+      font-size: 0.8rem;
+      line-height: 1.45;
+      overflow: auto;
+      max-height: 360px;
+      font-family: "JetBrains Mono", monospace;
+      color: #cbd5e1;
+    }
+    .status { margin-top: 0.5rem; font-size: 0.86rem; color: var(--accent); }
+    .checkbox-field {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      min-height: 40px;
+      padding-top: 1.35rem;
+      font-size: 0.9rem;
+      color: var(--text);
+    }
+    .checkbox-field input { min-width: auto; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="toplink" href="/">Back to main ledger UI</a>
+  </header>
+  <div class="page-shell">
+    <p class="eyebrow">Load Demo</p>
+    <h1>Load Simulator</h1>
+    <p class="sub">Creates high-volume customer traffic: payments in, deposits to products, withdrawals back to holding, and withdrawals to nominated account. Physical flows are statement lines and can be processed immediately.</p>
+
+    <div class="wrap">
+    <div class="card">
+      <div class="label">Bootstrap</div>
+      <div class="row">
+        <label class="field" for="bankId">
+          <span class="field-label">Bank ID</span>
+          <input id="bankId" value="BANK_LOAD" placeholder="Bank ID">
+        </label>
+        <label class="field" for="productId">
+          <span class="field-label">Product ID</span>
+          <input id="productId" value="PRODUCT_LOAD" placeholder="Product ID">
+        </label>
+        <label class="field" for="customerCount">
+          <span class="field-label">Customer Count</span>
+          <input id="customerCount" value="300" type="number" min="1" step="1" placeholder="Customer count">
+        </label>
+      </div>
+      <div class="row">
+        <label class="field" for="grossRate">
+          <span class="field-label">Gross Rate (%)</span>
+          <input id="grossRate" value="3.45" placeholder="Gross rate">
+        </label>
+        <label class="field" for="feeShare">
+          <span class="field-label">Fee Rate (%)</span>
+          <input id="feeShare" value="0.45" placeholder="Fee rate">
+        </label>
+        <div class="field action">
+          <span class="field-label">Action</span>
+          <button onclick="bootstrap()">Bootstrap Customers</button>
+        </div>
+      </div>
+      <div id="bootstrapStatus" class="status"></div>
+    </div>
+
+    <div class="card">
+      <div class="label">Run Load</div>
+      <div class="row">
+        <label class="field" for="rounds">
+          <span class="field-label">Rounds</span>
+          <input id="rounds" value="20" type="number" min="1" step="1" placeholder="Rounds">
+        </label>
+        <label class="field" for="paymentsPerRound">
+          <span class="field-label">Payments Per Round</span>
+          <input id="paymentsPerRound" value="200" type="number" min="0" step="1" placeholder="Payments/round">
+        </label>
+        <label class="field" for="depositsPerRound">
+          <span class="field-label">Deposits Per Round</span>
+          <input id="depositsPerRound" value="150" type="number" min="0" step="1" placeholder="Deposits/round">
+        </label>
+      </div>
+      <div class="row">
+        <label class="field" for="withdrawHoldingPerRound">
+          <span class="field-label">Withdraw To Holding / Round</span>
+          <input id="withdrawHoldingPerRound" value="100" type="number" min="0" step="1" placeholder="Withdraw->holding/round">
+        </label>
+        <label class="field" for="withdrawNominatedPerRound">
+          <span class="field-label">Withdraw To Nominated / Round</span>
+          <input id="withdrawNominatedPerRound" value="120" type="number" min="0" step="1" placeholder="Withdraw->nominated/round">
+        </label>
+        <label class="checkbox-field">
+          <input id="settleEachRound" type="checkbox" checked> settle each round
+        </label>
+      </div>
+      <div class="row">
+        <label class="field" for="minAmount">
+          <span class="field-label">Min Amount</span>
+          <input id="minAmount" value="1" placeholder="Min amount">
+        </label>
+        <label class="field" for="maxAmount">
+          <span class="field-label">Max Amount</span>
+          <input id="maxAmount" value="40" placeholder="Max amount">
+        </label>
+        <div class="field action">
+          <span class="field-label">Action</span>
+          <button onclick="runLoad()">Run</button>
+        </div>
+        <div class="field action">
+          <span class="field-label">Statements</span>
+          <button class="secondary" onclick="processLines()">Process Statement Lines</button>
+        </div>
+      </div>
+      <div id="runStatus" class="status"></div>
+    </div>
+
+    <div class="card">
+      <div class="label">Quick Metrics</div>
+      <div id="metrics"></div>
+      <div class="row" style="margin-top:0.7rem;">
+        <div class="field action">
+          <span class="field-label">Action</span>
+          <button class="secondary" onclick="refreshBalances()">Refresh Balances</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="label">Latest Result</div>
+      <pre id="resultOut">{}</pre>
+    </div>
+  </div>
+  </div>
+
+  <script>
+    async function api(path, body) {
+      const res = await fetch(path, {
+        method: body ? "POST" : "GET",
+        headers: body ? { "Content-Type": "application/json" } : {},
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      return data;
+    }
+
+    function setResult(data) {
+      document.getElementById("resultOut").textContent = JSON.stringify(data, null, 2);
+    }
+
+    function setStatus(id, msg) {
+      document.getElementById(id).textContent = msg;
+    }
+
+    function parseRateInputs(grossInputId, feeInputId) {
+      const grossPercent = parseFloat(document.getElementById(grossInputId).value) || 0;
+      const feePercent = parseFloat(document.getElementById(feeInputId).value) || 0;
+      if (grossPercent < 0 || feePercent < 0) {
+        throw new Error("Rates cannot be negative");
+      }
+      if (feePercent > grossPercent) {
+        throw new Error("Fee rate cannot be greater than gross rate");
+      }
+      return {
+        gross_rate: grossPercent / 100,
+        fee_share: grossPercent === 0 ? 0 : feePercent / grossPercent,
+      };
+    }
+
+    async function refreshBalances() {
+      const data = await api("/api/balances");
+      const keyRows = data.balances.filter((b) =>
+        b.label.includes("Client money pool") ||
+        b.label.includes("cash pending placement") ||
+        b.label.includes("cash at bank") ||
+        b.label.includes("interest receivable") ||
+        b.label.includes("Unattributed receipts")
+      );
+      document.getElementById("metrics").innerHTML = keyRows.map((b) =>
+        `<span class="pill">${b.label}: ${b.balance}</span>`
+      ).join("");
+    }
+
+    async function bootstrap() {
+      try {
+        setStatus("bootstrapStatus", "Bootstrapping...");
+        const { gross_rate, fee_share } = parseRateInputs("grossRate", "feeShare");
+        const body = {
+          bank_id: document.getElementById("bankId").value,
+          product_id: document.getElementById("productId").value,
+          customer_count: Number(document.getElementById("customerCount").value),
+          gross_rate,
+          fee_share,
+        };
+        const result = await api("/api/load-bootstrap", body);
+        setResult(result);
+        setStatus("bootstrapStatus", `Ready: ${result.total_with_product} customers on ${result.product_id}`);
+        await refreshBalances();
+      } catch (e) {
+        setStatus("bootstrapStatus", e.message);
+      }
+    }
+
+    async function processLines() {
+      try {
+        setStatus("runStatus", "Processing statement lines...");
+        const result = await api("/api/process-statement-lines", {});
+        setResult(result);
+        setStatus("runStatus", `Processed ${result.total} lines`);
+        await refreshBalances();
+      } catch (e) {
+        setStatus("runStatus", e.message);
+      }
+    }
+
+    async function runLoad() {
+      try {
+        setStatus("runStatus", "Running load...");
+        const body = {
+          product_id: document.getElementById("productId").value,
+          rounds: Number(document.getElementById("rounds").value),
+          payments_per_round: Number(document.getElementById("paymentsPerRound").value),
+          deposits_per_round: Number(document.getElementById("depositsPerRound").value),
+          withdrawals_to_holding_per_round: Number(document.getElementById("withdrawHoldingPerRound").value),
+          withdrawals_to_nominated_per_round: Number(document.getElementById("withdrawNominatedPerRound").value),
+          min_amount: Number(document.getElementById("minAmount").value),
+          max_amount: Number(document.getElementById("maxAmount").value),
+          settle_each_round: document.getElementById("settleEachRound").checked,
+        };
+        const result = await api("/api/load-run", body);
+        setResult(result);
+        setStatus(
+          "runStatus",
+          `Done in ${result.elapsed_seconds}s: ${result.total_transfers_posted} transfers, ${result.transfers_per_second}/s`
+        );
+        await refreshBalances();
+      } catch (e) {
+        setStatus("runStatus", e.message);
+      }
+    }
+
+    refreshBalances();
+  </script>
+</body>
+</html>

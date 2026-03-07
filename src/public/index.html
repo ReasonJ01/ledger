@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ledger Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #09101d;
+      --bg-glow: #16305d;
+      --panel: rgba(15, 22, 38, 0.92);
+      --panel-strong: #121b2f;
+      --border: #24314f;
+      --border-soft: #1b2740;
+      --text: #e7edfb;
+      --muted: #9aa8c7;
+      --heading: #c9d5f3;
+      --accent: #60a5fa;
+      --accent-strong: #3b82f6;
+      --success-bg: #0f3b2d;
+      --success-text: #8ef0ba;
+      --error-bg: #44181c;
+      --error-text: #ffb0b8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "DM Sans", system-ui, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top left, rgba(96, 165, 250, 0.16), transparent 28rem),
+        radial-gradient(circle at top right, rgba(34, 197, 94, 0.08), transparent 22rem),
+        linear-gradient(180deg, #0b1220 0%, var(--bg) 100%);
+      color: var(--text);
+    }
+    a { color: inherit; }
+    .topbar {
+      max-width: 1420px;
+      margin: 0 auto;
+      padding: 1.1rem 1.25rem 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    .page-shell {
+      max-width: 1420px;
+      margin: 0 auto;
+      padding: 1rem 1.25rem 1.5rem;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      gap: 1rem;
+      align-items: start;
+    }
+    @media (max-width: 980px) {
+      .page-shell { grid-template-columns: 1fr; }
+      .sidebar { position: static; }
+    }
+    .page-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      text-decoration: none;
+      color: var(--accent);
+      font-size: 0.92rem;
+    }
+    .page-link:hover { color: #93c5fd; }
+    .main { min-width: 0; }
+    .sidebar {
+      position: sticky;
+      top: 1rem;
+    }
+    .eyebrow {
+      margin: 0 0 0.25rem;
+      font-size: 0.76rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--accent);
+      font-weight: 600;
+    }
+    h1 { font-size: 1.9rem; font-weight: 600; margin: 0 0 0.4rem; letter-spacing: -0.03em; color: #f8fbff; }
+    .intro { color: var(--muted); margin: 0 0 1.1rem; max-width: 74ch; line-height: 1.55; }
+    section {
+      margin-bottom: 1rem;
+      padding: 1rem;
+      background: var(--panel);
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      box-shadow: 0 22px 50px rgba(3, 8, 20, 0.28);
+      backdrop-filter: blur(10px);
+    }
+    section h2 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 0.75rem; color: var(--heading); font-weight: 600; }
+    .row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+    .row:last-child { margin-bottom: 0; }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.32rem;
+      min-width: 140px;
+      flex: 1 1 140px;
+    }
+    .field.action {
+      min-width: auto;
+      flex: 0 0 auto;
+      justify-content: flex-end;
+    }
+    .field-label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    input, select, button {
+      padding: 0.55rem 0.75rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--panel-strong);
+      color: var(--text);
+      font-size: 0.9rem;
+      font-family: inherit;
+    }
+    input::placeholder { color: #64748b; }
+    button {
+      cursor: pointer;
+      background: linear-gradient(135deg, var(--accent-strong), #2563eb);
+      border: none;
+      color: white;
+      font-weight: 600;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    }
+    button:hover { filter: brightness(1.06); }
+    button.secondary {
+      background: #17233a;
+      border: 1px solid var(--border);
+      color: var(--text);
+      box-shadow: none;
+    }
+    button.secondary:hover { background: #1d2b45; }
+    .msg { font-size: 0.85rem; margin-top: 0.5rem; padding: 0.55rem 0.7rem; border-radius: 8px; }
+    .msg.ok { background: var(--success-bg); color: var(--success-text); }
+    .msg.err { background: var(--error-bg); color: var(--error-text); }
+    .hint { font-size: 0.83rem; color: var(--muted); margin: 0 0 0.65rem; line-height: 1.45; }
+    .metric {
+      padding: 0.5rem 0.75rem;
+      color: #cfe2ff;
+      font-variant-numeric: tabular-nums;
+      font-family: "JetBrains Mono", monospace;
+      background: #0d1526;
+      border-radius: 8px;
+      border: 1px solid var(--border-soft);
+      min-width: 160px;
+    }
+    #balancesSection {
+      padding: 0.8rem;
+      margin: 0;
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+    #balancesSection h2 { margin-bottom: 0; }
+    .balances-table-wrap {
+      background: rgba(8, 13, 24, 0.72);
+      border-radius: 10px;
+      border: 1px solid var(--border-soft);
+      overflow: hidden;
+    }
+    #balancesTable { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    #balancesTable th, #balancesTable td {
+      text-align: left;
+      padding: 0.48rem 0.72rem;
+      border-bottom: 1px solid var(--border-soft);
+      font-family: "JetBrains Mono", monospace;
+    }
+    #balancesTable th { color: var(--muted); font-weight: 500; font-family: "DM Sans", sans-serif; }
+    #balancesTable tr:last-child td { border-bottom: none; }
+    #balancesTable td:last-child { text-align: right; color: #b8c4df; }
+    #balancesTable tr.flash { animation: balance-flash 0.8s ease-out; }
+    @keyframes balance-flash {
+      0% { background: rgba(96, 165, 250, 0.2); }
+      100% { background: transparent; }
+    }
+    .sidebar-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.55rem; gap: 0.75rem; }
+    .sidebar-header h2 { margin: 0; }
+    .sidebar-stack { display: grid; gap: 0.85rem; }
+    .check-list { display: grid; gap: 0.55rem; }
+    .check-card {
+      padding: 0.65rem 0.72rem;
+      border-radius: 10px;
+      border: 1px solid var(--border-soft);
+      background: rgba(8, 13, 24, 0.72);
+    }
+    .check-card.ok { border-color: rgba(74, 222, 128, 0.32); }
+    .check-card.err { border-color: rgba(248, 113, 113, 0.35); }
+    .check-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin-bottom: 0.35rem;
+    }
+    .check-title {
+      font-size: 0.82rem;
+      color: var(--heading);
+      font-weight: 600;
+    }
+    .check-status {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+    }
+    .check-card.ok .check-status { color: var(--success-text); }
+    .check-card.err .check-status { color: var(--error-text); }
+    .check-line {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.75rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+      font-family: "JetBrains Mono", monospace;
+      margin-top: 0.2rem;
+    }
+    .check-line span:first-child {
+      font-family: "DM Sans", sans-serif;
+      color: var(--muted);
+    }
+    .check-note {
+      padding: 0.65rem 0.72rem;
+      border-radius: 10px;
+      border: 1px solid var(--border-soft);
+      background: rgba(8, 13, 24, 0.72);
+      font-size: 0.8rem;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <a href="/load.html" class="page-link">Open load simulator</a>
+  </header>
+  <div class="page-shell">
+    <div class="main">
+      <p class="eyebrow">Main Demo</p>
+      <h1>Cash Savings Aggregator Ledger</h1>
+      <p class="intro">
+        Demo flow: inbound cash lands in the pooled client-money account, gets matched from the virtual IBAN into a customer holding balance,
+        is allocated into a product principal balance while cash is reserved for the partner bank, and is later confirmed as placed at that bank.
+        Interest accrual stays separate from principal, and fees are collected from interest rather than hidden inside product balances.
+      </p>
+
+      <section>
+      <h2>Create</h2>
+      <div class="row">
+        <button onclick="createCustomer()">Create Customer</button>
+      </div>
+      <div class="row">
+        <label class="field" for="bankId">
+          <span class="field-label">Bank ID</span>
+          <input id="bankId" placeholder="BANK_A">
+        </label>
+        <div class="field action">
+          <span class="field-label">Action</span>
+          <button onclick="createBank()">Create Bank</button>
+        </div>
+      </div>
+      <div class="row">
+        <label class="field" for="productId">
+          <span class="field-label">Product ID</span>
+          <input id="productId" placeholder="PRODUCT_A">
+        </label>
+        <label class="field" for="productBank">
+          <span class="field-label">Bank</span>
+          <select id="productBank">
+            <option value="">-- Select bank --</option>
+          </select>
+        </label>
+        <label class="field" for="grossRate">
+          <span class="field-label">Gross Rate (%)</span>
+          <input id="grossRate" value="3.45" placeholder="3.45" title="Annual gross rate as a percent, e.g. 3.45 for 3.45%">
+        </label>
+        <label class="field" for="feeShare">
+          <span class="field-label">Fee Rate (%)</span>
+          <input id="feeShare" value="0.45" placeholder="0.45" title="Annual fee rate as a percent of product balance, capped at the gross rate">
+        </label>
+        <div class="field action">
+          <span class="field-label">Action</span>
+          <button onclick="createProduct()">Create Product</button>
+        </div>
+      </div>
+      <div id="createMsg" class="msg" style="display:none"></div>
+    </section>
+
+      <section>
+      <h2>Open Product</h2>
+      <div class="row">
+        <label class="field" for="openCustomer">
+          <span class="field-label">Customer</span>
+          <select id="openCustomer"></select>
+        </label>
+        <label class="field" for="openProduct">
+          <span class="field-label">Product</span>
+          <select id="openProduct"></select>
+        </label>
+        <div class="field action">
+          <span class="field-label">Action</span>
+          <button onclick="openProduct()">Open Product</button>
+        </div>
+      </div>
+      <div id="openMsg" class="msg" style="display:none"></div>
+    </section>
+
+      <section>
+      <h2>Inject Payment</h2>
+      <p class="hint">Adds a simulated bank statement credit into the pooled account. The reactor then moves it into unattributed receipts and, if the virtual IBAN matches, into the customer holding account.</p>
+      <div class="row">
+        <label class="field" for="injectAmount">
+          <span class="field-label">Amount</span>
+          <input id="injectAmount" placeholder="Amount" value="10.00">
+        </label>
+        <label class="field" for="injectCustomer">
+          <span class="field-label">Customer</span>
+          <select id="injectCustomer">
+            <option value="">-- Select customer --</option>
+          </select>
+        </label>
+        <div class="field action">
+          <span class="field-label">Action</span>
+          <button onclick="inject()">Inject</button>
+        </div>
+      </div>
+      <div id="injectMsg" class="msg" style="display:none"></div>
+    </section>
+
+      <section>
+      <h2>Allocate To Product</h2>
+      <p class="hint">One linked TigerBeetle batch does two things together: holding liability -&gt; product principal liability, and free client cash -&gt; bank cash pending placement.</p>
+      <div class="row">
+        <label class="field" for="depositCustomer">
+          <span class="field-label">Customer</span>
+          <select id="depositCustomer"></select>
+        </label>
+        <label class="field" for="depositProduct">
+          <span class="field-label">Product</span>
+          <select id="depositProduct"></select>
+        </label>
+        <label class="field" for="depositAmount">
+          <span class="field-label">Amount</span>
+          <input id="depositAmount" placeholder="Amount" value="10.00">
+        </label>
+        <div class="field action">
+          <span class="field-label">Action</span>
+          <button onclick="deposit()">Allocate</button>
+        </div>
+      </div>
+      <div id="depositMsg" class="msg" style="display:none"></div>
+    </section>
+
+      <section>
+      <h2>Withdraw To Holding</h2>
+      <p class="hint">Moves customer balance back out of product principal and into their on-platform holding balance.</p>
+      <div class="row">
+        <label class="field" for="withdrawHoldingCustomer">
+          <span class="field-label">Customer</span>
+          <select id="withdrawHoldingCustomer"></select>
+        </label>
+        <label class="field" for="withdrawHoldingProduct">
+          <span class="field-label">Product</span>
+          <select id="withdrawHoldingProduct"></select>
+        </label>
+        <label class="field" for="withdrawHoldingAmount">
+          <span class="field-label">Amount</span>
+          <input id="withdrawHoldingAmount" placeholder="Amount" value="10.00">
+        </label>
+        <div class="field action">
+          <span class="field-label">Action</span>
+          <button onclick="withdrawToHoldingUi()">Withdraw</button>
+        </div>
+      </div>
+      <div id="withdrawHoldingMsg" class="msg" style="display:none"></div>
+    </section>
+
+      <section>
+      <h2>Withdraw To Nominated</h2>
+      <p class="hint">Creates a simulated physical payment out of the pooled account to the customer's nominated account. The reactor then posts holding -&gt; pooled cash.</p>
+      <div class="row">
+        <label class="field" for="withdrawNominatedCustomer">
+          <span class="field-label">Customer</span>
+          <select id="withdrawNominatedCustomer"></select>
+        </label>
+        <label class="field" for="withdrawNominatedAmount">
+          <span class="field-label">Amount</span>
+          <input id="withdrawNominatedAmount" placeholder="Amount" value="10.00">
+        </label>
+        <div class="field action">
+          <span class="field-label">Action</span>
+          <button onclick="withdrawToNominatedUi()">Simulate Payment</button>
+        </div>
+      </div>
+      <div id="withdrawNominatedMsg" class="msg" style="display:none"></div>
+    </section>
+
+      <section>
+      <h2>Simulate Placement Sweep</h2>
+      <p class="hint">Creates a physical statement debit from the pooled account to the partner bank for pending placement. The reactor then posts pending -> cash at bank without touching customer liabilities.</p>
+      <div class="row">
+        <label class="field" for="settleBank">
+          <span class="field-label">Bank</span>
+          <select id="settleBank">
+            <option value="">-- Select bank --</option>
+          </select>
+        </label>
+        <div class="field">
+          <span class="field-label">Pending Placement</span>
+          <span id="settleUnsettled" class="metric">--</span>
+        </div>
+        <div class="field action">
+          <span class="field-label">Action</span>
+          <button onclick="settle()">Simulate Sweep</button>
+        </div>
+      </div>
+      <div id="settleMsg" class="msg" style="display:none"></div>
+    </section>
+
+      <section>
+      <h2>Bank EOD Accrual</h2>
+      <p class="hint">Run accrual after the bank's physical settlement day is complete. This accrues all products at the selected bank, compounds on principal + accrued interest payable, and realises whole pennies of customer interest into principal in the same run.</p>
+      <div class="row">
+        <label class="field" for="accrueBank">
+          <span class="field-label">Bank</span>
+          <select id="accrueBank">
+            <option value="">-- Select bank --</option>
+          </select>
+        </label>
+        <div class="field action">
+          <span class="field-label">Action</span>
+          <button onclick="accrueInterestBank()">Accrue 1 Day</button>
+        </div>
+      </div>
+      <div id="accrueMsg" class="msg" style="display:none"></div>
+    </section>
+
+      <section>
+      <h2>Simulate Bank Interest Payment</h2>
+      <p class="hint">Creates a physical statement credit from the partner bank into the pooled account for the bank's receivable interest amount. The reactor then realizes it.</p>
+      <div class="row">
+        <label class="field" for="realiseBank">
+          <span class="field-label">Bank</span>
+          <select id="realiseBank">
+            <option value="">-- Select bank --</option>
+          </select>
+        </label>
+        <div class="field">
+          <span class="field-label">Receivable</span>
+          <span id="bankReceivable" class="metric">--</span>
+        </div>
+      </div>
+      <div class="row">
+        <label class="field" for="realiseAmount">
+          <span class="field-label">Optional Amount</span>
+          <input id="realiseAmount" placeholder="Optional amount">
+        </label>
+        <div class="field action">
+          <span class="field-label">Action</span>
+          <button onclick="realiseInterest()">Simulate Payment</button>
+        </div>
+      </div>
+      <div id="realiseMsg" class="msg" style="display:none"></div>
+    </section>
+
+      <section>
+      <h2>Collect Fees</h2>
+      <p class="hint">Moves already-earned fees out of the pooled client-money cash into operating cash. This is capped by both accrued fee income and available pooled cash.</p>
+      <div class="row">
+        <label class="field" for="collectFeesAmount">
+          <span class="field-label">Optional Amount</span>
+          <input id="collectFeesAmount" placeholder="Optional amount">
+        </label>
+        <div class="field">
+          <span class="field-label">Collectable</span>
+          <span id="collectableFees" class="metric">--</span>
+        </div>
+        <div class="field action">
+          <span class="field-label">Action</span>
+          <button onclick="collectFees()">Collect</button>
+        </div>
+      </div>
+      <div id="collectMsg" class="msg" style="display:none"></div>
+    </section>
+    </div>
+
+    <aside class="sidebar">
+      <div class="sidebar-stack">
+        <section id="reconciliationSection">
+          <div class="sidebar-header">
+            <h2>Reconciliation</h2>
+            <button onclick="refreshReconciliation()" class="secondary" title="Refresh">Refresh</button>
+          </div>
+          <div id="reconciliationList" class="check-list"></div>
+          <div id="reconciliationNotes" class="check-list" style="margin-top:0.55rem;"></div>
+        </section>
+
+        <section id="balancesSection">
+          <div class="sidebar-header">
+            <h2>Balances</h2>
+            <button onclick="refreshBalances()" class="secondary" title="Refresh">Refresh</button>
+          </div>
+          <div class="balances-table-wrap">
+            <table id="balancesTable">
+              <thead><tr><th>Account</th><th>Balance</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    const base = "";
+    let customersData = [];
+
+    function show(el, ok, text) {
+      el.style.display = "block";
+      el.className = "msg " + (ok ? "ok" : "err");
+      el.textContent = text;
+    }
+
+    async function api(path, body) {
+      const res = await fetch(base + path, {
+        method: body ? "POST" : "GET",
+        headers: body ? { "Content-Type": "application/json" } : {},
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      return data;
+    }
+
+    function parseRateInputs(grossInputId, feeInputId) {
+      const grossPercent = parseFloat(document.getElementById(grossInputId).value) || 0;
+      const feePercent = parseFloat(document.getElementById(feeInputId).value) || 0;
+      if (grossPercent < 0 || feePercent < 0) {
+        throw new Error("Rates cannot be negative");
+      }
+      if (feePercent > grossPercent) {
+        throw new Error("Fee rate cannot be greater than gross rate");
+      }
+      return {
+        gross_rate: grossPercent / 100,
+        fee_share: grossPercent === 0 ? 0 : feePercent / grossPercent,
+        gross_percent: grossPercent,
+        fee_percent: feePercent,
+      };
+    }
+
+    async function createCustomer() {
+      try {
+        const result = await api("/api/create-customer", {});
+        show(document.getElementById("createMsg"), true, `Created ${result.customer_id} | IBAN ${result.virtual_iban}`);
+        await refreshSelects();
+        refreshBalances();
+      } catch (e) {
+        show(document.getElementById("createMsg"), false, e.message);
+      }
+    }
+
+    async function createBank() {
+      try {
+        const id = document.getElementById("bankId").value || "BANK_A";
+        await api("/api/create-bank", { bank_id: id });
+        show(document.getElementById("createMsg"), true, `Created bank ${id}`);
+        document.getElementById("bankId").value = "";
+        await refreshSelects();
+        refreshBalances();
+      } catch (e) {
+        show(document.getElementById("createMsg"), false, e.message);
+      }
+    }
+
+    async function createProduct() {
+      try {
+        const product_id = document.getElementById("productId").value || "PRODUCT_A";
+        const bank_id = document.getElementById("productBank").value;
+        const { gross_rate, fee_share, gross_percent, fee_percent } = parseRateInputs("grossRate", "feeShare");
+        if (!bank_id) {
+          show(document.getElementById("createMsg"), false, "Select a bank");
+          return;
+        }
+        const result = await api("/api/create-product", { product_id, bank_id, gross_rate, fee_share });
+        const gross = `gross ${gross_percent.toFixed(2)}%`;
+        const fee = ` | fee ${fee_percent.toFixed(2)}%`;
+        show(document.getElementById("createMsg"), true, `Created ${product_id} at ${bank_id} (${gross}${fee})`);
+        document.getElementById("productId").value = "";
+        document.getElementById("grossRate").value = "";
+        document.getElementById("feeShare").value = "";
+        await refreshSelects();
+        refreshBalances();
+      } catch (e) {
+        show(document.getElementById("createMsg"), false, e.message);
+      }
+    }
+
+    async function openProduct() {
+      const customer_id = document.getElementById("openCustomer").value;
+      const product_id = document.getElementById("openProduct").value;
+      if (!customer_id || !product_id) {
+        show(document.getElementById("openMsg"), false, "Select customer and product");
+        return;
+      }
+      try {
+        await api("/api/open-product", { customer_id, product_id });
+        show(document.getElementById("openMsg"), true, `Opened ${product_id} for ${customer_id}`);
+        await refreshSelects();
+        refreshBalances();
+      } catch (e) {
+        show(document.getElementById("openMsg"), false, e.message);
+      }
+    }
+
+    async function inject() {
+      const amount = document.getElementById("injectAmount").value || "10.00";
+      const customer_id = document.getElementById("injectCustomer").value || undefined;
+      try {
+        const result = await api("/api/inject", { amount, customer_id });
+        show(document.getElementById("injectMsg"), true, `Injected ${result.amount} ${result.currency} -> ${result.creditor_account_iban}`);
+        refreshBalances();
+        refreshSettleable();
+      } catch (e) {
+        show(document.getElementById("injectMsg"), false, e.message);
+      }
+    }
+
+    async function deposit() {
+      const customer_id = document.getElementById("depositCustomer").value;
+      const product_id = document.getElementById("depositProduct").value;
+      const amount = document.getElementById("depositAmount").value || "10.00";
+      if (!customer_id || !product_id) {
+        show(document.getElementById("depositMsg"), false, "Select customer and product");
+        return;
+      }
+      try {
+        const result = await api("/api/deposit", { customer_id, product_id, amount });
+        show(document.getElementById("depositMsg"), true, `Allocated ${amount} from ${customer_id} into ${product_id}; ${result.bank_id} pending placement increased`);
+        refreshBalances();
+        refreshSettleable();
+      } catch (e) {
+        show(document.getElementById("depositMsg"), false, e.message);
+      }
+    }
+
+    async function withdrawToHoldingUi() {
+      const customer_id = document.getElementById("withdrawHoldingCustomer").value;
+      const product_id = document.getElementById("withdrawHoldingProduct").value;
+      const amount = document.getElementById("withdrawHoldingAmount").value || "10.00";
+      if (!customer_id || !product_id) {
+        show(document.getElementById("withdrawHoldingMsg"), false, "Select customer and product");
+        return;
+      }
+      try {
+        await api("/api/withdraw-to-holding", { customer_id, product_id, amount });
+        show(document.getElementById("withdrawHoldingMsg"), true, `Moved ${amount} from ${product_id} back to ${customer_id} holding`);
+        refreshBalances();
+      } catch (e) {
+        show(document.getElementById("withdrawHoldingMsg"), false, e.message);
+      }
+    }
+
+    async function withdrawToNominatedUi() {
+      const customer_id = document.getElementById("withdrawNominatedCustomer").value;
+      const amount = document.getElementById("withdrawNominatedAmount").value || "10.00";
+      if (!customer_id) {
+        show(document.getElementById("withdrawNominatedMsg"), false, "Select customer");
+        return;
+      }
+      try {
+        const result = await api("/api/withdraw-to-nominated", { customer_id, amount });
+        show(
+          document.getElementById("withdrawNominatedMsg"),
+          true,
+          `Simulated ${result.amount} nominated withdrawal for ${customer_id}. Reactor will post it on next poll.`
+        );
+        refreshBalances();
+      } catch (e) {
+        show(document.getElementById("withdrawNominatedMsg"), false, e.message);
+      }
+    }
+
+    async function settle() {
+      const bank_id = document.getElementById("settleBank").value;
+      if (!bank_id) {
+        show(document.getElementById("settleMsg"), false, "Select bank");
+        return;
+      }
+      try {
+        const result = await api("/api/settle", { bank_id });
+        if (result.settled) {
+          show(document.getElementById("settleMsg"), true, `Simulated ${result.amount} sweep to ${bank_id}. Reactor will post settlement on next poll.`);
+        } else {
+          show(document.getElementById("settleMsg"), false, result.message || "No pending placements");
+        }
+        refreshSettleable();
+        refreshBalances();
+      } catch (e) {
+        show(document.getElementById("settleMsg"), false, e.message);
+      }
+    }
+
+    async function accrueInterestBank() {
+      const bank_id = document.getElementById("accrueBank").value;
+      if (!bank_id) {
+        show(document.getElementById("accrueMsg"), false, "Select a bank");
+        return;
+      }
+      try {
+        const result = await api("/api/accrue-interest-bank", { bank_id });
+        if (parseFloat(result.gross_accrued) > 0) {
+          show(
+            document.getElementById("accrueMsg"),
+            true,
+            `${bank_id} gross ${result.gross_accrued} | customer ${result.customer_accrued} | fees ${result.fee_accrued} | realised ${result.realised}`
+          );
+        } else {
+          show(document.getElementById("accrueMsg"), false, result.message || "No balances large enough to accrue");
+        }
+        refreshBalances();
+        refreshCollectableFees();
+        refreshInterestReceivable();
+      } catch (e) {
+        show(document.getElementById("accrueMsg"), false, e.message);
+      }
+    }
+
+    async function realiseInterest() {
+      const bank_id = document.getElementById("realiseBank").value;
+      const amount = document.getElementById("realiseAmount").value || undefined;
+      if (!bank_id) {
+        show(document.getElementById("realiseMsg"), false, "Select a bank");
+        return;
+      }
+      try {
+        const result = await api("/api/realise-interest", amount ? { bank_id, amount } : { bank_id });
+        if (result.simulated) {
+          show(document.getElementById("realiseMsg"), true, `Simulated ${result.amount} interest payment for ${bank_id}. Reactor will post it on next poll.`);
+        } else {
+          show(document.getElementById("realiseMsg"), false, result.message || "No receivable interest to pay");
+        }
+        document.getElementById("realiseAmount").value = "";
+        refreshInterestReceivable();
+      } catch (e) {
+        show(document.getElementById("realiseMsg"), false, e.message);
+      }
+    }
+
+    async function collectFees() {
+      const amount = document.getElementById("collectFeesAmount").value || undefined;
+      try {
+        const result = await api("/api/collect-fees", amount ? { amount } : {});
+        if (result.collected) {
+          show(document.getElementById("collectMsg"), true, `Collected ${result.amount} into operating cash`);
+        } else {
+          show(document.getElementById("collectMsg"), false, result.message || "No collectable fees");
+        }
+        document.getElementById("collectFeesAmount").value = "";
+        refreshBalances();
+        refreshCollectableFees();
+      } catch (e) {
+        show(document.getElementById("collectMsg"), false, e.message);
+      }
+    }
+
+    async function refreshSettleable() {
+      try {
+        const result = await api("/api/settleable");
+        const bankId = document.getElementById("settleBank").value;
+        const el = document.getElementById("settleUnsettled");
+        if (!bankId) {
+          el.textContent = "--";
+          return;
+        }
+        const amount = parseFloat(result[bankId] || "0");
+        el.textContent = `${amount.toFixed(2)} pending`;
+      } catch (_) {
+        document.getElementById("settleUnsettled").textContent = "--";
+      }
+    }
+
+    async function refreshCollectableFees() {
+      try {
+        const result = await api("/api/collectable-fees");
+        document.getElementById("collectableFees").textContent = `${parseFloat(result.amount).toFixed(2)} collectable`;
+      } catch (_) {
+        document.getElementById("collectableFees").textContent = "--";
+      }
+    }
+
+    async function refreshInterestReceivable() {
+      try {
+        const result = await api("/api/bank-interest-receivable");
+        const bankId = document.getElementById("realiseBank").value;
+        const el = document.getElementById("bankReceivable");
+        if (!bankId) {
+          el.textContent = "--";
+          return;
+        }
+        const amount = parseFloat(result[bankId] || "0");
+        el.textContent = `${amount.toFixed(2)} receivable`;
+      } catch (_) {
+        document.getElementById("bankReceivable").textContent = "--";
+      }
+    }
+
+    function renderCheck(check) {
+      const statusClass = check.ok ? "ok" : "err";
+      const statusText = check.ok ? "OK" : "Mismatch";
+      const differenceLabel = check.difference_label || "Difference";
+      return `
+        <div class="check-card ${statusClass}">
+          <div class="check-head">
+            <div class="check-title">${check.label || check.bank_id}</div>
+            <div class="check-status">${statusText}</div>
+          </div>
+          <div class="check-line"><span>${check.left_label}</span><span>&pound;${check.left}</span></div>
+          <div class="check-line"><span>${check.right_label}</span><span>&pound;${check.right}</span></div>
+          <div class="check-line"><span>${differenceLabel}</span><span>&pound;${check.difference}</span></div>
+        </div>
+      `;
+    }
+
+    async function refreshReconciliation() {
+      try {
+        const result = await api("/api/reconciliation");
+        const checks = result.checks || [];
+        document.getElementById("reconciliationList").innerHTML = checks.map(renderCheck).join("");
+        document.getElementById("reconciliationNotes").innerHTML = (result.notes || [])
+          .map((note) => `<div class="check-note">${note}</div>`)
+          .join("");
+      } catch (e) {
+        document.getElementById("reconciliationList").innerHTML = `
+          <div class="check-card err">
+            <div class="check-head">
+              <div class="check-title">Reconciliation unavailable</div>
+              <div class="check-status">Error</div>
+            </div>
+            <div class="check-line"><span>Message</span><span>${e.message}</span></div>
+          </div>
+        `;
+        document.getElementById("reconciliationNotes").innerHTML = "";
+      }
+    }
+
+    async function refreshSelects() {
+      const [customers, products, banks] = await Promise.all([
+        api("/api/customers"),
+        api("/api/products"),
+        api("/api/banks"),
+      ]);
+
+      customersData = customers.customers;
+
+      const fillCustomerSelect = (select, includeEmpty = false) => {
+        select.innerHTML = includeEmpty ? '<option value="">-- Select customer --</option>' : "";
+        customers.customers.forEach((customer) => {
+          const option = document.createElement("option");
+          option.value = customer.customer_id;
+          option.textContent = `${customer.customer_id} (${customer.virtual_iban})`;
+          select.appendChild(option);
+        });
+      };
+
+      fillCustomerSelect(document.getElementById("openCustomer"));
+      fillCustomerSelect(document.getElementById("injectCustomer"), true);
+      fillCustomerSelect(document.getElementById("depositCustomer"), true);
+      fillCustomerSelect(document.getElementById("withdrawHoldingCustomer"), true);
+      fillCustomerSelect(document.getElementById("withdrawNominatedCustomer"), true);
+
+      const openProduct = document.getElementById("openProduct");
+      openProduct.innerHTML = "";
+      products.products.forEach((product) => {
+        const feeRatePercent = product.gross_rate * product.fee_share * 100;
+        const label = `${product.product_id} (${product.bank_id}) | gross ${(product.gross_rate * 100).toFixed(2)}% | fee ${feeRatePercent.toFixed(2)}%`;
+
+        const openOption = document.createElement("option");
+        openOption.value = product.product_id;
+        openOption.textContent = label;
+        openProduct.appendChild(openOption);
+      });
+
+      const productBank = document.getElementById("productBank");
+      const settleBank = document.getElementById("settleBank");
+      const accrueBank = document.getElementById("accrueBank");
+      const realiseBank = document.getElementById("realiseBank");
+      productBank.innerHTML = '<option value="">-- Select bank --</option>';
+      settleBank.innerHTML = '<option value="">-- Select bank --</option>';
+      accrueBank.innerHTML = '<option value="">-- Select bank --</option>';
+      realiseBank.innerHTML = '<option value="">-- Select bank --</option>';
+      banks.banks.forEach((bank) => {
+        const createOption = document.createElement("option");
+        createOption.value = bank;
+        createOption.textContent = bank;
+        productBank.appendChild(createOption);
+
+        const settleOption = document.createElement("option");
+        settleOption.value = bank;
+        settleOption.textContent = bank;
+        settleBank.appendChild(settleOption);
+
+        const accrueOption = document.createElement("option");
+        accrueOption.value = bank;
+        accrueOption.textContent = bank;
+        accrueBank.appendChild(accrueOption);
+
+        const realiseOption = document.createElement("option");
+        realiseOption.value = bank;
+        realiseOption.textContent = bank;
+        realiseBank.appendChild(realiseOption);
+      });
+
+      updateDepositProducts();
+      updateWithdrawHoldingProducts();
+      refreshSettleable();
+      refreshCollectableFees();
+      refreshInterestReceivable();
+      refreshReconciliation();
+    }
+
+    function updateDepositProducts() {
+      const customerId = document.getElementById("depositCustomer").value;
+      const select = document.getElementById("depositProduct");
+      select.innerHTML = "";
+      const customer = customersData.find((item) => item.customer_id === customerId);
+      (customer?.products || []).forEach((productId) => {
+        const option = document.createElement("option");
+        option.value = productId;
+        option.textContent = productId;
+        select.appendChild(option);
+      });
+    }
+
+    function updateWithdrawHoldingProducts() {
+      const customerId = document.getElementById("withdrawHoldingCustomer").value;
+      const select = document.getElementById("withdrawHoldingProduct");
+      select.innerHTML = "";
+      const customer = customersData.find((item) => item.customer_id === customerId);
+      (customer?.products || []).forEach((productId) => {
+        const option = document.createElement("option");
+        option.value = productId;
+        option.textContent = productId;
+        select.appendChild(option);
+      });
+    }
+
+    document.getElementById("depositCustomer").addEventListener("change", updateDepositProducts);
+    document.getElementById("withdrawHoldingCustomer").addEventListener("change", updateWithdrawHoldingProducts);
+    document.getElementById("settleBank").addEventListener("change", refreshSettleable);
+    document.getElementById("realiseBank").addEventListener("change", refreshInterestReceivable);
+
+    let previousBalances = {};
+
+    async function refreshBalances() {
+      try {
+        const result = await api("/api/balances");
+        const changedLabels = new Set();
+        for (const balance of result.balances) {
+          if (previousBalances[balance.label] !== undefined && previousBalances[balance.label] !== balance.balance) {
+            changedLabels.add(balance.label);
+          }
+          previousBalances[balance.label] = balance.balance;
+        }
+
+        const tbody = document.querySelector("#balancesTable tbody");
+        tbody.innerHTML = result.balances.map((balance) => {
+          const flash = changedLabels.has(balance.label) ? ' class="flash"' : "";
+          return `<tr${flash}><td>${balance.label}</td><td>&pound;${balance.balance}</td></tr>`;
+        }).join("");
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function onBalanceChange() {
+      refreshBalances();
+      refreshSettleable();
+      refreshCollectableFees();
+      refreshInterestReceivable();
+      refreshReconciliation();
+    }
+
+    const es = new EventSource("/api/events");
+    es.onmessage = () => onBalanceChange();
+
+    refreshSelects();
+    refreshBalances();
+    refreshSettleable();
+    refreshCollectableFees();
+    refreshInterestReceivable();
+    refreshReconciliation();
+    setInterval(onBalanceChange, 30000);
+  </script>
+</body>
+</html>

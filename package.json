@@ -1,0 +1,19 @@
+{
+  "name": "ledger",
+  "version": "1.0.0",
+  "description": "Cash savings aggregator demo using TigerBeetle",
+  "type": "module",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "node src/main.js",
+    "inject": "node src/main.js inject",
+    "create-customer": "node src/main.js create-customer",
+    "balances": "node src/main.js balances",
+    "start-tb": "powershell -ExecutionPolicy Bypass -File scripts/start-tigerbeetle.ps1",
+    "start-tb-unix": "bash scripts/start-tigerbeetle.sh"
+  },
+  "dependencies": {
+    "express": "^4.22.1",
+    "tigerbeetle-node": "0.16.75"
+  }
+}
