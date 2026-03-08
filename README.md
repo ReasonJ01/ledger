@@ -203,7 +203,7 @@ How this demo uses it:
 Why it is useful here:
 Statement processing is naturally retry-heavy. Stable IDs guarantee "at most once" money movement even if the same line is replayed.
 
-### 5. High-throughput batched writes with adaptive split
+### 5. High-throughput batched writes
 
 What it is:
 TigerBeetle is designed for batched operations; this demo submits grouped transfers in batches.
