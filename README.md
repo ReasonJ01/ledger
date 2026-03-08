@@ -4,12 +4,12 @@ Small [TigerBeetle](https://tigerbeetle.com/) demo for a cash savings aggregator
 
 - customer money arrives into one pooled physical account
 - virtual IBANs are used to identify who paid in
-- matched cash sits in a customer holding balance
-- customers allocate from holding into savings products
-- customers can withdraw from products back into holding
-- customers can withdraw from holding to their nominated account
-- money is then placed with partner banks
-- interest owed to customers and platform fees are tracked separately from principal
+- matched cash sits in customer available cash
+- customers allocate available cash into savings products
+- product allocations and redemptions flow through explicit in-progress states
+- nominated withdrawals are requested first, then settled from statement lines
+- money is placed with partner banks and later confirmed from statements
+- customer interest and platform fee income are tracked separately
 
 ## Debits, Credits, Assets, and Liabilities
 
@@ -26,8 +26,6 @@ If you want a bit more background before walking through the code, the first few
 - [Data Modeling](https://docs.tigerbeetle.com/coding/data-modeling/)
 - [Financial Accounting](https://docs.tigerbeetle.com/coding/financial-accounting/)
 
-
-
 You can get up to some [pretty funky things](https://docs.tigerbeetle.com/coding/recipes/) once you get a handle on the different patterns available for adding transfers.
 
 ## Ledger Model
@@ -36,148 +34,156 @@ Fyi, i think the actual shape of the ledger here is *not great*. There's probabl
 
 ### System assets
 
-- `Client money pool`: cash in the pooled physical account
-- `BANK_X cash pending placement`: cash reserved for a partner bank but not yet confirmed as placed
+- `Safeguard pooled cash`: cash in the pooled physical account
+- `BANK_X cash pending placement`: cash reserved for partner placement but not yet bank-settled
 - `BANK_X cash at bank`: cash confirmed as placed with the partner bank
 - `BANK_X interest receivable`: accrued interest due back from that partner bank
-- `Operating cash`: fees collected out of interest
+- `Operating cash`: fees collected out of pooled cash
 
 ### Customer liabilities
 
-- `Unattributed receipts`: inbound money before a virtual IBAN match
-- `cust_N holding`: identified customer cash still on-platform
-- `cust_N PRODUCT_X principal`: amount allocated into the savings product
-- `cust_N PRODUCT_X interest payable`: accrued interest owed to the customer before it is capitalised into principal
+- `Unidentified receipts`: inbound money before virtual IBAN matching
+- `cust_N available cash`: identified customer cash still on-platform
+- `cust_N withdrawal in progress`: nominated withdrawal requested, awaiting statement settlement
+- `cust_N PRODUCT_X subscription in progress`: subscription state before confirmation
+- `cust_N PRODUCT_X principal invested`: invested product balance
+- `cust_N PRODUCT_X interest accrued`: accrued customer interest before capitalisation
+- `cust_N PRODUCT_X redemption in progress`: redemption state before completion
 
 ### Income
 
-- `Fee income`: the platform's earned share of product interest
+- `Fee income`: platform earned share of product interest accrual
 
 ## Flow
 
-### 1. Money received into the pooled account
+### 1. Money received into safeguard pooled cash
 
-Bank statement credit arrives:
+Statement credit arrives:
 
-- Debit `Client money pool`
-- Credit `Unattributed receipts`
+- Debit `Safeguard pooled cash`
+- Credit `Unidentified receipts`
 
-### 2. Customer identified from the virtual IBAN
+If the virtual IBAN matches a customer in the same processing pass:
 
-The receipt is matched to a customer:
+- Debit `Unidentified receipts`
+- Credit `cust_N available cash`
 
-- Debit `Unattributed receipts`
-- Credit `cust_N holding`
+### 2. Customer allocates into a product
 
-### 3. Customer allocates into a product
+This is one linked TigerBeetle batch with three transfers:
 
-This is a linked TigerBeetle batch with two transfers:
-
-- Debit `cust_N holding`
-- Credit `cust_N PRODUCT_X principal`
+- Debit `cust_N available cash`
+- Credit `cust_N PRODUCT_X subscription in progress`
+- Debit `cust_N PRODUCT_X subscription in progress`
+- Credit `cust_N PRODUCT_X principal invested`
 - Debit `BANK_X cash pending placement`
-- Credit `Client money pool`
+- Credit `Safeguard pooled cash`
 
-This keeps the customer-side move and the cash-side reservation atomic.
+This keeps customer liability movement and asset reservation aligned atomically.
 
-### 4. Placement confirmed with the partner bank
+### 3. Placement confirmed with the partner bank
 
-In this demo, the sweep is simulated by creating a statement line debit (`event_type = "BANK_SETTLEMENT"`, `source_bank_id = "BANK_X"`). The reactor then posts:
+A simulated settlement statement debit (`event_type = "BANK_SETTLEMENT"`, `source_bank_id = "BANK_X"`) is processed as:
 
 - Debit `BANK_X cash at bank`
 - Credit `BANK_X cash pending placement`
 
-Customer liabilities do not move here because the customer already owned the product balance after step 3.
+### 4. Bank end-of-day accrual and customer interest capitalisation
 
-### 5. Bank end-of-day accrual and customer interest realisation
-
-After the bank's physical movements are complete, run accrual for that bank:
+Accrual per product at a bank posts:
 
 - Debit `BANK_X interest receivable`
-- Credit `cust_N PRODUCT_X interest payable`
+- Credit `cust_N PRODUCT_X interest accrued`
 - Credit `Fee income`
 
-The customer amount and fee amount are split using the product's `fee_share`.
-Accrual compounds daily because each day is calculated on `principal + accrued interest payable`.
+Accrual compounds daily on `principal invested + interest accrued`.
 
-In the same run, any whole pennies of customer interest are realised into principal:
+In the same run, whole pennies of customer interest are capitalised:
 
-- Debit `cust_N PRODUCT_X interest payable`
-- Credit `cust_N PRODUCT_X principal`
+- Debit `cust_N PRODUCT_X interest accrued`
+- Credit `cust_N PRODUCT_X principal invested`
 
-Sub-penny customer interest stays accrued in `interest payable` until it reaches a real amount of currency.
+Sub-penny customer interest remains in `interest accrued`.
 
-### 6. Bank interest cash received via statement line
+### 5. Bank interest cash received via statement line
 
-When the bank actually pays interest:
+When the bank pays interest (`event_type = "BANK_INTEREST"`, `source_bank_id = "BANK_X"`):
 
-- Debit `Client money pool`
+- Debit `Safeguard pooled cash`
 - Credit `BANK_X interest receivable`
 
-In this demo, this happens through the statement simulator with `event_type = "BANK_INTEREST"` and `source_bank_id = "BANK_X"`, then the reactor posts the realization transfer.
+### 6. Fee collection
 
-### 7. Fee collection
-
-When fees are taken out of pooled cash:
+When fees are collected:
 
 - Debit `Operating cash`
-- Credit `Client money pool`
+- Credit `Safeguard pooled cash`
 
-### 8. Customer withdrawals
+### 7. Customer redemption back to available cash
 
-`Product -> Holding` withdrawal:
+`Product -> Available cash` redemption is linked in two legs:
 
-- Debit `cust_N PRODUCT_X principal`
-- Credit `cust_N holding`
+- Debit `cust_N PRODUCT_X principal invested`
+- Credit `cust_N PRODUCT_X redemption in progress`
+- Debit `cust_N PRODUCT_X redemption in progress`
+- Credit `cust_N available cash`
 
-`Holding -> Nominated` withdrawal:
+### 8. Customer nominated withdrawal
 
-- Simulated as a statement debit (`event_type = "CUSTOMER_WITHDRAWAL_NOMINATED"`, `source_customer_id = "cust_N"`)
-- Reactor posts: Debit `cust_N holding`, Credit `Client money pool`
+First, withdrawal is requested:
+
+- Debit `cust_N available cash`
+- Credit `cust_N withdrawal in progress`
+
+Then a nominated withdrawal statement debit (`event_type = "CUSTOMER_WITHDRAWAL_NOMINATED"`, `source_customer_id = "cust_N"`) settles:
+
+- Debit `cust_N withdrawal in progress`
+- Credit `Safeguard pooled cash`
 
 ## TigerBeetle Features Used In This Demo
 
-- Linked events are the most important one here. They let one business action post multiple ledger effects atomically. In this demo, allocating to a product moves `holding -> principal` and `client money -> bank pending` in the same linked batch, so customer balances and cash reservation cannot drift apart. Used in `src/deposit.js` and linked account creation in `src/customers.js`.
-- Account flags and balance constraints are useful because this model mixes assets, liabilities, and income. Customer liability accounts should fail differently from cash asset accounts, and TigerBeetle lets us encode that at the account level. Used in `src/config.js`, `src/accounts.js`, `src/customers.js`, and `src/banks.js`.
-- Idempotent transfer submission matters because statement processing is a retry-heavy path. The demo gives each statement line its TigerBeetle transfer IDs up front, stores them on the line, and reuses them during processing, so retries return `exists` instead of duplicating money movement. Used in `src/simulator/store.js`, `src/statement-processor.js`, and `src/tb-errors.js`.
-- Batched requests matter because this kind of platform is naturally bursty: many inbound payments, sweeps, withdrawals, and statement lines. The demo batches statement posting, load-test transfers, accrual writes, and balance lookups rather than doing everything one request at a time. Used in `src/tb-batches.js`, `src/statement-processor.js`, `src/api.js`, and `src/interest.js`.
-- Integer amounts and 128-bit IDs matter because money needs exact arithmetic and the ledger needs native TigerBeetle identifiers. The demo converts GBP to scale-8 integers before submission and uses TigerBeetle IDs for accounts and transfers throughout. Used in `src/config.js`, `src/transfers.js`, `src/customers.js`, `src/banks.js`, and `src/simulator/store.js`.
+- Linked events are the most important one here. They let one business action post multiple ledger effects atomically. In this demo, product allocation and product redemption each post multiple legs in a single linked batch, so intermediate states cannot drift from cash or customer liabilities.
+- Account flags and balance constraints are useful because this model mixes assets, liabilities, and income. Customer liability accounts fail differently from cash asset accounts, and TigerBeetle lets us encode that at the account level.
+- Idempotent transfer submission matters because statement processing is retry-heavy. Statement lines carry fixed transfer IDs and retries return `exists` instead of duplicating money movement.
+- Batched requests matter because this platform is bursty: inbound payments, settlements, withdrawals, and accrual writes happen in volume.
+- Integer amounts and 128-bit IDs matter because money needs exact arithmetic and the ledger needs native TigerBeetle identifiers.
 
 ## Notes On `src/config.js`
 
 `src/config.js` is effectively the shared ledger vocabulary for the demo, so a lot of the rest of the code makes more sense once you know what is defined there.
 
-- `LEDGER_ID = 1` means everything in this demo is posted into a single TigerBeetle ledger. Transfers cannot happen between ledgers, a common use here is to split currencies.
-- `ASSET_SCALE = 8` means amounts are stored as integer scale-8 values. So `1 GBP` is `100000000` internal units. That is why the code keeps converting between user-facing decimal amounts and integer amounts before posting.
-- `AccountCode` is the chart of accounts. The exact numeric values are not important, but the grouping is:
+- `LEDGER_ID = 1` means everything in this demo is posted into a single TigerBeetle ledger. Transfers cannot happen between ledgers.
+- `ASSET_SCALE = 8` means amounts are stored as integer scale-8 values. So `1 GBP` is `100000000` internal units.
+- `AccountCode` is the chart of accounts. Grouping is:
   - `100x` for assets
   - `200x` for liabilities
   - `300x` for income
-  That makes it easy to see what kind of account you are looking at when reading account creation or inspecting transfers.
-- The asset account codes cover the platform cash states:
-  - pooled client money
-  - bank cash pending placement
-  - bank cash settled at the partner bank
-  - bank interest receivable
+- Asset account codes cover:
+  - safeguard pooled cash
+  - bank placement in transit
+  - bank principal placed
+  - bank interest due/receivable
   - operating cash
-- The liability account codes cover the customer money states:
-  - unattributed receipts
-  - customer holding
-  - product principal
-  - accrued interest payable
-- `AccountFlags` is where the demo pulls in the TigerBeetle flags it actually uses. In practice, the important ones are:
+  - bank redemption in transit (provisioned)
+- Liability account codes cover:
+  - unidentified receipts
+  - available cash
+  - withdrawal in progress
+  - product subscription in progress
+  - product principal invested
+  - product interest accrued
+  - product redemption in progress
+- `AccountFlags` uses:
   - `credits_must_not_exceed_debits` for asset accounts
   - `debits_must_not_exceed_credits` for liability and income accounts
-  - `linked` for account creations that must succeed together
-- `TransferFlags` currently only exposes `linked`, because the main transfer-level feature this demo uses is atomic multi-leg posting.
-- `TransferCode` is the transaction taxonomy for the ledger. It is useful because every posted transfer has an explicit business meaning
-- `AccountId` defines the fixed system accounts. These are the accounts that always exist regardless of how many customers or banks are created:
-  - `CLIENT_MONEY`
-  - `UNATTRIBUTED_RECEIPTS`
+  - `linked` where account creation must succeed together
+- `TransferCode` is the transaction taxonomy so each posted transfer has explicit business meaning.
+- `AccountId` defines fixed system accounts that always exist:
+  - `SAFEGUARD_POOLED_CASH`
+  - `UNIDENTIFIED_RECEIPTS`
   - `OPERATING_CASH`
   - `FEE_INCOME`
-  Having fixed IDs for these makes the rest of the posting logic much simpler, because those core accounts are referenced everywhere.
-- `PHYSICAL_ACCOUNT_IBAN` is the single pooled real-world account used by the simulator. All external money movement comes through that account, while virtual IBANs are used to work out which customer a payment belongs to.
+- `PHYSICAL_ACCOUNT_IBAN` is the single pooled real-world account used by the simulator.
 
 ## Prerequisites
 
@@ -244,11 +250,12 @@ node src/main.js cli
 
 - create customers, banks, and products
 - open a product for a customer
-- inject inbound payments
-- allocate holding cash into a product
-- confirm placement with the partner bank
-- run bank EOD accrual
+- inject inbound payments via statement simulation
+- allocate customer available cash into a product
+- confirm partner bank placement from pending to placed
+- run bank EOD accrual (including customer capitalisation)
 - simulate bank interest payment through statement lines
+- withdraw from product back into available cash
+- request and settle nominated withdrawals
 - run load traffic from the dedicated load UI
 - collect fees into operating cash
-
