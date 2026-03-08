@@ -245,15 +245,13 @@
   <div class="page-shell">
     <div class="main">
       <p class="eyebrow">Main Demo</p>
-      <h1>Cash Savings Aggregator Ledger</h1>
+      <h1>Cash Savings Aggregator Ledger Lifecycle</h1>
       <p class="intro">
-        Demo flow: inbound cash lands in the pooled client-money account, gets matched from the virtual IBAN into a customer holding balance,
-        is allocated into a product principal balance while cash is reserved for the partner bank, and is later confirmed as placed at that bank.
-        Interest accrual stays separate from principal, and fees are collected from interest rather than hidden inside product balances.
+        Demo flow: inbound cash is matched into customer available cash, allocated into products, settled with partner banks, and later moved back for withdrawals while reconciliation stays visible throughout.
       </p>
 
       <section>
-      <h2>Create</h2>
+      <h2>Setup Ledger Actors</h2>
       <div class="row">
         <button onclick="createCustomer()">Create Customer</button>
       </div>
@@ -295,7 +293,7 @@
     </section>
 
       <section>
-      <h2>Open Product</h2>
+      <h2>Prepare Customer Position</h2>
       <div class="row">
         <label class="field" for="openCustomer">
           <span class="field-label">Customer</span>
@@ -314,8 +312,8 @@
     </section>
 
       <section>
-      <h2>Inject Payment</h2>
-      <p class="hint">Adds a simulated bank statement credit into the pooled account. The reactor then moves it into unattributed receipts and, if the virtual IBAN matches, into the customer holding account.</p>
+      <h2>1. Receive Inbound Cash</h2>
+      <p class="hint">Adds a simulated statement credit into safeguard pooled cash. Reactor posts money received into unidentified receipts and then customer identified into available cash when IBAN mapping succeeds.</p>
       <div class="row">
         <label class="field" for="injectAmount">
           <span class="field-label">Amount</span>
@@ -336,8 +334,8 @@
     </section>
 
       <section>
-      <h2>Allocate To Product</h2>
-      <p class="hint">One linked TigerBeetle batch does two things together: holding liability -&gt; product principal liability, and free client cash -&gt; bank cash pending placement.</p>
+      <h2>2. Start Product Subscription</h2>
+      <p class="hint">Linked posting performs subscription requested and subscription confirmed, then mirrors cash as bank placement confirmed so customer liability state and bank cash state stay aligned.</p>
       <div class="row">
         <label class="field" for="depositCustomer">
           <span class="field-label">Customer</span>
@@ -360,8 +358,8 @@
     </section>
 
       <section>
-      <h2>Withdraw To Holding</h2>
-      <p class="hint">Moves customer balance back out of product principal and into their on-platform holding balance.</p>
+      <h2>3. Complete Product Redemption</h2>
+      <p class="hint">Completes redemption by moving from product principal invested back into customer available cash.</p>
       <div class="row">
         <label class="field" for="withdrawHoldingCustomer">
           <span class="field-label">Customer</span>
@@ -384,8 +382,8 @@
     </section>
 
       <section>
-      <h2>Withdraw To Nominated</h2>
-      <p class="hint">Creates a simulated physical payment out of the pooled account to the customer's nominated account. The reactor then posts holding -&gt; pooled cash.</p>
+      <h2>4. Request Nominated Withdrawal</h2>
+      <p class="hint">Creates a simulated outgoing payment; reactor first requests withdrawal into withdrawal in progress, then settles from withdrawal in progress when the statement debit is processed.</p>
       <div class="row">
         <label class="field" for="withdrawNominatedCustomer">
           <span class="field-label">Customer</span>
@@ -404,8 +402,8 @@
     </section>
 
       <section>
-      <h2>Simulate Placement Sweep</h2>
-      <p class="hint">Creates a physical statement debit from the pooled account to the partner bank for pending placement. The reactor then posts pending -> cash at bank without touching customer liabilities.</p>
+      <h2>5. Confirm Bank Placement</h2>
+      <p class="hint">Creates a physical statement debit for partner placement and finalises bank placement in transit into principal placed at bank.</p>
       <div class="row">
         <label class="field" for="settleBank">
           <span class="field-label">Bank</span>
@@ -426,8 +424,8 @@
     </section>
 
       <section>
-      <h2>Bank EOD Accrual</h2>
-      <p class="hint">Run accrual after the bank's physical settlement day is complete. This accrues all products at the selected bank, compounds on principal + accrued interest payable, and realises whole pennies of customer interest into principal in the same run.</p>
+      <h2>6. Run Bank EOD Accrual</h2>
+      <p class="hint">Run end-of-day accrual once bank settlement is complete. This accrues customer interest plus fee income and capitalises whole pennies into principal invested.</p>
       <div class="row">
         <label class="field" for="accrueBank">
           <span class="field-label">Bank</span>
@@ -444,8 +442,8 @@
     </section>
 
       <section>
-      <h2>Simulate Bank Interest Payment</h2>
-      <p class="hint">Creates a physical statement credit from the partner bank into the pooled account for the bank's receivable interest amount. The reactor then realizes it.</p>
+      <h2>7. Receive Bank Interest Cash</h2>
+      <p class="hint">Creates a statement credit from the partner bank for interest due and realises it into safeguard pooled cash.</p>
       <div class="row">
         <label class="field" for="realiseBank">
           <span class="field-label">Bank</span>
@@ -472,8 +470,8 @@
     </section>
 
       <section>
-      <h2>Collect Fees</h2>
-      <p class="hint">Moves already-earned fees out of the pooled client-money cash into operating cash. This is capped by both accrued fee income and available pooled cash.</p>
+      <h2>8. Collect Platform Fees</h2>
+      <p class="hint">Moves earned fee income out of safeguard pooled cash into operating cash, capped by both earned amount and available asset backing.</p>
       <div class="row">
         <label class="field" for="collectFeesAmount">
           <span class="field-label">Optional Amount</span>
@@ -662,7 +660,7 @@
       }
       try {
         await api("/api/withdraw-to-holding", { customer_id, product_id, amount });
-        show(document.getElementById("withdrawHoldingMsg"), true, `Moved ${amount} from ${product_id} back to ${customer_id} holding`);
+        show(document.getElementById("withdrawHoldingMsg"), true, `Moved ${amount} from ${product_id} principal invested to ${customer_id} available cash`);
         refreshBalances();
       } catch (e) {
         show(document.getElementById("withdrawHoldingMsg"), false, e.message);
@@ -681,7 +679,7 @@
         show(
           document.getElementById("withdrawNominatedMsg"),
           true,
-          `Simulated ${result.amount} nominated withdrawal for ${customer_id}. Reactor will post it on next poll.`
+          `Simulated ${result.amount} nominated withdrawal for ${customer_id}. Statement processing will settle withdrawal in progress on next poll.`
         );
         refreshBalances();
       } catch (e) {
@@ -700,7 +698,7 @@
         if (result.settled) {
           show(document.getElementById("settleMsg"), true, `Simulated ${result.amount} sweep to ${bank_id}. Reactor will post settlement on next poll.`);
         } else {
-          show(document.getElementById("settleMsg"), false, result.message || "No pending placements");
+          show(document.getElementById("settleMsg"), false, result.message || "No placement-in-transit balance");
         }
         refreshSettleable();
         refreshBalances();
@@ -744,7 +742,7 @@
       try {
         const result = await api("/api/realise-interest", amount ? { bank_id, amount } : { bank_id });
         if (result.simulated) {
-          show(document.getElementById("realiseMsg"), true, `Simulated ${result.amount} interest payment for ${bank_id}. Reactor will post it on next poll.`);
+          show(document.getElementById("realiseMsg"), true, `Simulated ${result.amount} interest payment for ${bank_id}. Statement processing will realise it on next poll.`);
         } else {
           show(document.getElementById("realiseMsg"), false, result.message || "No receivable interest to pay");
         }
@@ -760,7 +758,7 @@
       try {
         const result = await api("/api/collect-fees", amount ? { amount } : {});
         if (result.collected) {
-          show(document.getElementById("collectMsg"), true, `Collected ${result.amount} into operating cash`);
+          show(document.getElementById("collectMsg"), true, `Collected ${result.amount} fee income into operating cash`);
         } else {
           show(document.getElementById("collectMsg"), false, result.message || "No collectable fees");
         }
@@ -1002,3 +1000,8 @@
   </script>
 </body>
 </html>
+
+
+
+
+

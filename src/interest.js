@@ -61,12 +61,12 @@ export async function accrueInterest(client, productId) {
   const accountIds = [];
   for (const customer of customersWithProduct) {
     const position = customer.product_positions[productId];
-    const principalId = typeof position.principal_account_id === "bigint"
-      ? position.principal_account_id
-      : BigInt(position.principal_account_id);
-    const accruedInterestId = typeof position.accrued_interest_account_id === "bigint"
-      ? position.accrued_interest_account_id
-      : BigInt(position.accrued_interest_account_id);
+    const principalId = typeof position.principal_invested_account_id === "bigint"
+      ? position.principal_invested_account_id
+      : BigInt(position.principal_invested_account_id);
+    const accruedInterestId = typeof position.interest_accrued_account_id === "bigint"
+      ? position.interest_accrued_account_id
+      : BigInt(position.interest_accrued_account_id);
     accountIds.push(principalId, accruedInterestId);
   }
   const lookupChunks = chunkArray(accountIds, LOOKUP_ACCOUNTS_BATCH_SIZE);
@@ -96,12 +96,12 @@ export async function accrueInterest(client, productId) {
   let totalRealised = 0n;
   for (const customer of customersWithProduct) {
     const position = customer.product_positions[productId];
-    const principalAccountId = typeof position.principal_account_id === "bigint"
-      ? position.principal_account_id
-      : BigInt(position.principal_account_id);
-    const interestAccountId = typeof position.accrued_interest_account_id === "bigint"
-      ? position.accrued_interest_account_id
-      : BigInt(position.accrued_interest_account_id);
+    const principalAccountId = typeof position.principal_invested_account_id === "bigint"
+      ? position.principal_invested_account_id
+      : BigInt(position.principal_invested_account_id);
+    const interestAccountId = typeof position.interest_accrued_account_id === "bigint"
+      ? position.interest_accrued_account_id
+      : BigInt(position.interest_accrued_account_id);
     const principalBalance = balanceByAccountId.get(principalAccountId) ?? 0n;
     const accruedInterestBalance = balanceByAccountId.get(interestAccountId) ?? 0n;
     const compoundingBalance = principalBalance + accruedInterestBalance;
@@ -115,7 +115,7 @@ export async function accrueInterest(client, productId) {
       customerTransfers.push(
         createTransfer({
           id: id(),
-          debit_account_id: bank.interest_receivable_account_id,
+          debit_account_id: bank.interest_due_account_id,
           credit_account_id: interestAccountId,
           amount: customerInterestScale8,
           code: TransferCode.INTEREST_ACCRUAL_CUSTOMER,
@@ -139,7 +139,7 @@ export async function accrueInterest(client, productId) {
       customerTransfers.push(
         createTransfer({
           id: id(),
-          debit_account_id: bank.interest_receivable_account_id,
+          debit_account_id: bank.interest_due_account_id,
           credit_account_id: AccountId.FEE_INCOME,
           amount: feeScale8,
           code: TransferCode.INTEREST_ACCRUAL_FEE,
@@ -217,7 +217,7 @@ export async function recordBankInterestReceived(client, amountScale8, receivabl
   if (!receivableAccountId) throw new Error("receivableAccountId required");
   const transfer = createTransfer({
     id: transferId,
-    debit_account_id: AccountId.CLIENT_MONEY,
+    debit_account_id: AccountId.SAFEGUARD_POOLED_CASH,
     credit_account_id: BigInt(receivableAccountId),
     amount: amountScale8,
     code: TransferCode.INTEREST_REALISATION,
@@ -236,7 +236,7 @@ export async function collectFees(client, amountScale8) {
   const transfer = createTransfer({
     id: id(),
     debit_account_id: AccountId.OPERATING_CASH,
-    credit_account_id: AccountId.CLIENT_MONEY,
+    credit_account_id: AccountId.SAFEGUARD_POOLED_CASH,
     amount: amountScale8,
     code: TransferCode.FEE_COLLECTION,
   });

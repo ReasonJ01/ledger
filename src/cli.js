@@ -51,7 +51,7 @@ export async function cmdDeposit(args) {
   const amount = args[3] ?? "10.00";
   if (!customerId || !productId) throw new Error("Usage: deposit <customer_id> <product_id> [amount]");
   const result = await apiDeposit(customerId, productId, amount);
-  console.log("Allocated", amount, "from", customerId, "holding ->", `${productId} (${result.bank_id} pending placement)`);
+  console.log("Allocated", amount, "from", customerId, "available cash ->", `${productId} (${result.bank_id} placement in transit)`);
 }
 
 export async function cmdCreateBank(args) {

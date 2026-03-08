@@ -33,15 +33,21 @@ export async function createCustomer(client) {
   const customerId = `cust_${customerIndex}`;
   const virtualIban = `${VIRTUAL_IBAN_PREFIX}${String(customerIndex).padStart(14, "0")}`;
 
-  const holdingAccountId = id();
+  const availableCashAccountId = id();
+  const withdrawalInProgressAccountId = id();
 
-  const holdingAccount = createAccount(
-    holdingAccountId,
-    AccountCode.LIABILITY_HOLDING,
+  const availableCashAccount = createAccount(
+    availableCashAccountId,
+    AccountCode.LIABILITY_AVAILABLE_CASH,
+    AccountFlags.linked | AccountFlags.debits_must_not_exceed_credits
+  );
+  const withdrawalInProgressAccount = createAccount(
+    withdrawalInProgressAccountId,
+    AccountCode.LIABILITY_WITHDRAWAL_IN_PROGRESS,
     AccountFlags.debits_must_not_exceed_credits
   );
 
-  const errors = await client.createAccounts([holdingAccount]);
+  const errors = await client.createAccounts([availableCashAccount, withdrawalInProgressAccount]);
   for (const err of errors) {
     if (err.result !== CreateAccountError.exists && err.result !== CreateAccountError.linked_event_failed) {
       throw new Error(formatAccountError(err.result, err.index));
@@ -51,7 +57,8 @@ export async function createCustomer(client) {
   const customer = {
     customer_id: customerId,
     virtual_iban: virtualIban,
-    holding_account_id: holdingAccountId,
+    available_cash_account_id: availableCashAccountId,
+    withdrawal_in_progress_account_id: withdrawalInProgressAccountId,
     product_positions: {},
   };
 
@@ -69,20 +76,38 @@ export async function openProductAccount(client, customerId, productId) {
   const product = getProductById(productId);
   if (!product) throw new Error(`Product ${productId} not found`);
 
-  const principalAccountId = id();
-  const accruedInterestAccountId = id();
-  const principalAccount = createAccount(
-    principalAccountId,
-    AccountCode.LIABILITY_PRODUCT_PRINCIPAL,
-    AccountFlags.linked | AccountFlags.debits_must_not_exceed_credits
+  const subscriptionInProgressAccountId = id();
+  const principalInvestedAccountId = id();
+  const interestAccruedAccountId = id();
+  const redemptionInProgressAccountId = id();
+
+  const subscriptionInProgressAccount = createAccount(
+    subscriptionInProgressAccountId,
+    AccountCode.LIABILITY_PRODUCT_SUBSCRIPTION_IN_PROGRESS,
+    AccountFlags.debits_must_not_exceed_credits
   );
-  const accruedInterestAccount = createAccount(
-    accruedInterestAccountId,
-    AccountCode.LIABILITY_ACCRUED_INTEREST,
+  const principalInvestedAccount = createAccount(
+    principalInvestedAccountId,
+    AccountCode.LIABILITY_PRODUCT_PRINCIPAL_INVESTED,
+    AccountFlags.debits_must_not_exceed_credits
+  );
+  const interestAccruedAccount = createAccount(
+    interestAccruedAccountId,
+    AccountCode.LIABILITY_PRODUCT_INTEREST_ACCRUED,
+    AccountFlags.debits_must_not_exceed_credits
+  );
+  const redemptionInProgressAccount = createAccount(
+    redemptionInProgressAccountId,
+    AccountCode.LIABILITY_PRODUCT_REDEMPTION_IN_PROGRESS,
     AccountFlags.debits_must_not_exceed_credits
   );
 
-  const errors = await client.createAccounts([principalAccount, accruedInterestAccount]);
+  const errors = await client.createAccounts([
+    subscriptionInProgressAccount,
+    principalInvestedAccount,
+    interestAccruedAccount,
+    redemptionInProgressAccount,
+  ]);
   for (const err of errors) {
     if (err.result !== CreateAccountError.exists && err.result !== CreateAccountError.linked_event_failed) {
       throw new Error(formatAccountError(err.result));
@@ -90,8 +115,10 @@ export async function openProductAccount(client, customerId, productId) {
   }
 
   customer.product_positions[productId] = {
-    principal_account_id: principalAccountId,
-    accrued_interest_account_id: accruedInterestAccountId,
+    subscription_in_progress_account_id: subscriptionInProgressAccountId,
+    principal_invested_account_id: principalInvestedAccountId,
+    interest_accrued_account_id: interestAccruedAccountId,
+    redemption_in_progress_account_id: redemptionInProgressAccountId,
   };
   return customer.product_positions[productId];
 }

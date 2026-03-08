@@ -40,8 +40,8 @@ function createTransferGroup(line) {
       transfers: [
         createTransfer({
           id: statementTransferId(line, "bank_interest"),
-          debit_account_id: AccountId.CLIENT_MONEY,
-          credit_account_id: BigInt(bank.interest_receivable_account_id),
+          debit_account_id: AccountId.SAFEGUARD_POOLED_CASH,
+          credit_account_id: BigInt(bank.interest_due_account_id),
           amount,
           code: TransferCode.INTEREST_REALISATION,
           user_data_128,
@@ -65,10 +65,10 @@ function createTransferGroup(line) {
       transfers: [
         createTransfer({
           id: statementTransferId(line, "bank_settlement"),
-          debit_account_id: BigInt(bank.settled_account_id),
-          credit_account_id: BigInt(bank.pending_account_id),
+          debit_account_id: BigInt(bank.principal_placed_account_id),
+          credit_account_id: BigInt(bank.placement_in_transit_account_id),
           amount,
-          code: TransferCode.BANK_SETTLEMENT,
+          code: TransferCode.BANK_PLACEMENT_CONFIRMED,
           user_data_128,
         }),
       ],
@@ -90,10 +90,10 @@ function createTransferGroup(line) {
       transfers: [
         createTransfer({
           id: statementTransferId(line, "withdrawal_to_nominated"),
-          debit_account_id: BigInt(customer.holding_account_id),
-          credit_account_id: AccountId.CLIENT_MONEY,
+          debit_account_id: BigInt(customer.withdrawal_in_progress_account_id),
+          credit_account_id: AccountId.SAFEGUARD_POOLED_CASH,
           amount,
-          code: TransferCode.WITHDRAWAL_TO_NOMINATED,
+          code: TransferCode.WITHDRAWAL_PAID,
           user_data_128,
         }),
       ],
@@ -109,8 +109,8 @@ function createTransferGroup(line) {
   const transfers = [
     createTransfer({
       id: statementTransferId(line, "money_received"),
-      debit_account_id: AccountId.CLIENT_MONEY,
-      credit_account_id: AccountId.UNATTRIBUTED_RECEIPTS,
+      debit_account_id: AccountId.SAFEGUARD_POOLED_CASH,
+      credit_account_id: AccountId.UNIDENTIFIED_RECEIPTS,
       amount,
       code: TransferCode.MONEY_RECEIVED,
       user_data_128,
@@ -122,8 +122,8 @@ function createTransferGroup(line) {
     transfers.push(
       createTransfer({
         id: statementTransferId(line, "customer_identified"),
-        debit_account_id: AccountId.UNATTRIBUTED_RECEIPTS,
-        credit_account_id: BigInt(customer.holding_account_id),
+        debit_account_id: AccountId.UNIDENTIFIED_RECEIPTS,
+        credit_account_id: BigInt(customer.available_cash_account_id),
         amount,
         code: TransferCode.CUSTOMER_IDENTIFIED,
         user_data_128,

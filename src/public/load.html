@@ -173,16 +173,16 @@
 </head>
 <body>
   <header class="topbar">
-    <a class="toplink" href="/">Back to main ledger UI</a>
+    <a class="toplink" href="/">Back to main lifecycle UI</a>
   </header>
   <div class="page-shell">
     <p class="eyebrow">Load Demo</p>
-    <h1>Load Simulator</h1>
-    <p class="sub">Creates high-volume customer traffic: payments in, deposits to products, withdrawals back to holding, and withdrawals to nominated account. Physical flows are statement lines and can be processed immediately.</p>
+    <h1>Lifecycle Load Simulator</h1>
+    <p class="sub">Creates high-volume customer traffic: payments in, deposits to products, withdrawals back to available cash, and nominated withdrawals processed from statement lines.</p>
 
     <div class="wrap">
     <div class="card">
-      <div class="label">Bootstrap</div>
+      <div class="label">Bootstrap Actors</div>
       <div class="row">
         <label class="field" for="bankId">
           <span class="field-label">Bank ID</span>
@@ -208,14 +208,14 @@
         </label>
         <div class="field action">
           <span class="field-label">Action</span>
-          <button onclick="bootstrap()">Bootstrap Customers</button>
+          <button onclick="bootstrap()">Bootstrap Positions</button>
         </div>
       </div>
       <div id="bootstrapStatus" class="status"></div>
     </div>
 
     <div class="card">
-      <div class="label">Run Load</div>
+      <div class="label">Run Lifecycle Traffic</div>
       <div class="row">
         <label class="field" for="rounds">
           <span class="field-label">Rounds</span>
@@ -232,15 +232,15 @@
       </div>
       <div class="row">
         <label class="field" for="withdrawHoldingPerRound">
-          <span class="field-label">Withdraw To Holding / Round</span>
+          <span class="field-label">Redemptions To Available / Round</span>
           <input id="withdrawHoldingPerRound" value="100" type="number" min="0" step="1" placeholder="Withdraw->holding/round">
         </label>
         <label class="field" for="withdrawNominatedPerRound">
-          <span class="field-label">Withdraw To Nominated / Round</span>
+          <span class="field-label">Nominated Withdrawals / Round</span>
           <input id="withdrawNominatedPerRound" value="120" type="number" min="0" step="1" placeholder="Withdraw->nominated/round">
         </label>
         <label class="checkbox-field">
-          <input id="settleEachRound" type="checkbox" checked> settle each round
+          <input id="settleEachRound" type="checkbox" checked> confirm placements each round
         </label>
       </div>
       <div class="row">
@@ -258,14 +258,14 @@
         </div>
         <div class="field action">
           <span class="field-label">Statements</span>
-          <button class="secondary" onclick="processLines()">Process Statement Lines</button>
+          <button class="secondary" onclick="processLines()">Process Statements</button>
         </div>
       </div>
       <div id="runStatus" class="status"></div>
     </div>
 
     <div class="card">
-      <div class="label">Quick Metrics</div>
+      <div class="label">State Metrics</div>
       <div id="metrics"></div>
       <div class="row" style="margin-top:0.7rem;">
         <div class="field action">
@@ -320,11 +320,11 @@
     async function refreshBalances() {
       const data = await api("/api/balances");
       const keyRows = data.balances.filter((b) =>
-        b.label.includes("Client money pool") ||
+        b.label.includes("Safeguard pooled cash") ||
         b.label.includes("cash pending placement") ||
         b.label.includes("cash at bank") ||
         b.label.includes("interest receivable") ||
-        b.label.includes("Unattributed receipts")
+        b.label.includes("Unidentified receipts")
       );
       document.getElementById("metrics").innerHTML = keyRows.map((b) =>
         `<span class="pill">${b.label}: ${b.balance}</span>`
@@ -356,7 +356,7 @@
         setStatus("runStatus", "Processing statement lines...");
         const result = await api("/api/process-statement-lines", {});
         setResult(result);
-        setStatus("runStatus", `Processed ${result.total} lines`);
+        setStatus("runStatus", `Processed ${result.total} statement lines`);
         await refreshBalances();
       } catch (e) {
         setStatus("runStatus", e.message);
@@ -393,3 +393,5 @@
   </script>
 </body>
 </html>
+
+
