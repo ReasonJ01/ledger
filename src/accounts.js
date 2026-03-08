@@ -27,8 +27,8 @@ function createAccount(id, code, flags) {
 }
 
 export const accounts = [
-  createAccount(AccountId.CLIENT_MONEY, AccountCode.ASSET_CLIENT_MONEY, AccountFlags.credits_must_not_exceed_debits),
-  createAccount(AccountId.UNATTRIBUTED_RECEIPTS, AccountCode.LIABILITY_UNATTRIBUTED, AccountFlags.debits_must_not_exceed_credits),
+  createAccount(AccountId.SAFEGUARD_POOLED_CASH, AccountCode.ASSET_SAFEGUARD_POOLED, AccountFlags.credits_must_not_exceed_debits),
+  createAccount(AccountId.UNIDENTIFIED_RECEIPTS, AccountCode.LIABILITY_UNIDENTIFIED_RECEIPTS, AccountFlags.debits_must_not_exceed_credits),
   createAccount(AccountId.OPERATING_CASH, AccountCode.ASSET_OPERATING_CASH, AccountFlags.credits_must_not_exceed_debits),
   createAccount(AccountId.FEE_INCOME, AccountCode.INCOME_FEE, AccountFlags.debits_must_not_exceed_credits),
 ];

@@ -4,7 +4,7 @@ import { addStatementLine } from "./simulator/interface.js";
 import { createCustomer, getAllCustomers, getCustomerById, openProductAccount } from "./customers.js";
 import { createProduct, getAllProducts, getProductById } from "./products.js";
 import { createBank, getAllBanks, getBankById } from "./banks.js";
-import { allocateToProduct, withdrawToHolding } from "./deposit.js";
+import { allocateToProduct, requestWithdrawal, withdrawToHolding } from "./deposit.js";
 import { accrueInterest, collectFees } from "./interest.js";
 import { processPendingStatementLines } from "./statement-processor.js";
 import { formatTransferError } from "./tb-errors.js";
@@ -47,20 +47,25 @@ function getCreditBalance(accountsById, accountId) {
 
 async function lookupLedgerAccounts() {
   const lookupIds = [
-    AccountId.CLIENT_MONEY,
-    AccountId.UNATTRIBUTED_RECEIPTS,
+    AccountId.SAFEGUARD_POOLED_CASH,
+    AccountId.UNIDENTIFIED_RECEIPTS,
     AccountId.OPERATING_CASH,
     AccountId.FEE_INCOME,
   ];
 
   for (const bank of getAllBanks()) {
-    lookupIds.push(bank.pending_account_id, bank.settled_account_id, bank.interest_receivable_account_id);
+    lookupIds.push(bank.placement_in_transit_account_id, bank.principal_placed_account_id, bank.interest_due_account_id);
   }
 
   for (const customer of getAllCustomers()) {
-    lookupIds.push(customer.holding_account_id);
+    lookupIds.push(customer.available_cash_account_id, customer.withdrawal_in_progress_account_id);
     for (const position of Object.values(customer.product_positions)) {
-      lookupIds.push(position.principal_account_id, position.accrued_interest_account_id);
+      lookupIds.push(
+        position.subscription_in_progress_account_id,
+        position.principal_invested_account_id,
+        position.interest_accrued_account_id,
+        position.redemption_in_progress_account_id
+      );
     }
   }
 
@@ -144,8 +149,9 @@ function buildLoadPlan({
         kind: "deposit",
         customer_id: customer.customer_id,
         amount: randomAmount(min_amount, max_amount),
-        holding_account_id: customer.holding_account_id,
-        principal_account_id: position.principal_account_id,
+        holding_account_id: customer.available_cash_account_id,
+        subscription_account_id: position.subscription_in_progress_account_id,
+        principal_account_id: position.principal_invested_account_id,
       });
     }
 
@@ -156,8 +162,9 @@ function buildLoadPlan({
         kind: "withdraw_holding",
         customer_id: customer.customer_id,
         amount: randomAmount(min_amount, max_amount),
-        holding_account_id: customer.holding_account_id,
-        principal_account_id: position.principal_account_id,
+        holding_account_id: customer.available_cash_account_id,
+        subscription_account_id: position.subscription_in_progress_account_id,
+        principal_account_id: position.principal_invested_account_id,
       });
     }
 
@@ -182,7 +189,7 @@ function buildLoadPlan({
   };
 }
 
-function buildLoadTransferGroup(action, bankPendingAccountId) {
+function buildLoadTransferGroup(action, bankPlacementInTransitAccountId) {
   const amountScale8 = amountToScale8(action.amount);
 
   if (action.kind === "deposit") {
@@ -192,16 +199,23 @@ function buildLoadTransferGroup(action, bankPendingAccountId) {
         createTransfer({
           id: id(),
           debit_account_id: BigInt(action.holding_account_id),
-          credit_account_id: BigInt(action.principal_account_id),
+          credit_account_id: BigInt(action.subscription_account_id),
           amount: amountScale8,
-          code: TransferCode.PRODUCT_PRINCIPAL_ALLOCATED,
+          code: TransferCode.PRODUCT_SUBSCRIPTION_REQUESTED,
         }),
         createTransfer({
           id: id(),
-          debit_account_id: BigInt(bankPendingAccountId),
-          credit_account_id: AccountId.CLIENT_MONEY,
+          debit_account_id: BigInt(action.subscription_account_id),
+          credit_account_id: BigInt(action.principal_account_id),
           amount: amountScale8,
-          code: TransferCode.PRODUCT_CASH_RESERVED,
+          code: TransferCode.PRODUCT_SUBSCRIPTION_CONFIRMED,
+        }),
+        createTransfer({
+          id: id(),
+          debit_account_id: BigInt(bankPlacementInTransitAccountId),
+          credit_account_id: AccountId.SAFEGUARD_POOLED_CASH,
+          amount: amountScale8,
+          code: TransferCode.BANK_PLACEMENT_CONFIRMED,
         }),
       ],
     };
@@ -216,7 +230,7 @@ function buildLoadTransferGroup(action, bankPendingAccountId) {
           debit_account_id: BigInt(action.principal_account_id),
           credit_account_id: BigInt(action.holding_account_id),
           amount: amountScale8,
-          code: TransferCode.PRODUCT_WITHDRAWAL_TO_HOLDING,
+          code: TransferCode.PRODUCT_REDEMPTION_COMPLETED,
         }),
       ],
     };
@@ -318,7 +332,7 @@ async function getPendingPlacementAmount(tbClient, bankId) {
   const bank = getBankById(bankId);
   if (!bank) return null;
 
-  const [pendingAccount] = await tbClient.lookupAccounts([bank.pending_account_id]);
+  const [pendingAccount] = await tbClient.lookupAccounts([bank.placement_in_transit_account_id]);
   return pendingAccount ? assetBalance(pendingAccount) : 0n;
 }
 
@@ -326,7 +340,7 @@ async function getBankInterestReceivableAmount(tbClient, bankId) {
   const bank = getBankById(bankId);
   if (!bank) return null;
 
-  const [receivable] = await tbClient.lookupAccounts([bank.interest_receivable_account_id]);
+  const [receivable] = await tbClient.lookupAccounts([bank.interest_due_account_id]);
   return receivable ? assetBalance(receivable) : 0n;
 }
 
@@ -334,7 +348,7 @@ async function getCollectableFeeAmount(tbClient) {
   const accounts = await tbClient.lookupAccounts([
     AccountId.FEE_INCOME,
     AccountId.OPERATING_CASH,
-    AccountId.CLIENT_MONEY,
+    AccountId.SAFEGUARD_POOLED_CASH,
   ]);
 
   let feeIncome = 0n;
@@ -344,7 +358,7 @@ async function getCollectableFeeAmount(tbClient) {
   for (const account of accounts) {
     if (account.id === AccountId.FEE_INCOME) feeIncome = creditBalance(account);
     if (account.id === AccountId.OPERATING_CASH) operatingCash = assetBalance(account);
-    if (account.id === AccountId.CLIENT_MONEY) clientMoney = assetBalance(account);
+    if (account.id === AccountId.SAFEGUARD_POOLED_CASH) clientMoney = assetBalance(account);
   }
 
   const uncollectedFees = feeIncome - operatingCash;
@@ -422,9 +436,10 @@ export async function apiDeposit(customerId, productId, amount = "10.00") {
   await allocateToProduct(
     client,
     amountScale8,
-    customer.holding_account_id,
-    position.principal_account_id,
-    bank.pending_account_id
+    customer.available_cash_account_id,
+    position.subscription_in_progress_account_id,
+    position.principal_invested_account_id,
+    bank.placement_in_transit_account_id
   );
 
   return { customer_id: customerId, product_id: productId, amount, bank_id: bank.bank_id };
@@ -439,8 +454,9 @@ export async function apiWithdrawToHolding(customerId, productId, amount = "10.0
   await withdrawToHolding(
     client,
     amountToScale8(amount),
-    position.principal_account_id,
-    customer.holding_account_id
+    position.principal_invested_account_id,
+    position.redemption_in_progress_account_id,
+    customer.available_cash_account_id
   );
 
   return { customer_id: customerId, product_id: productId, amount };
@@ -449,6 +465,7 @@ export async function apiWithdrawToHolding(customerId, productId, amount = "10.0
 export async function apiWithdrawToNominated(customerId, amount = "10.00") {
   const customer = getCustomerById(customerId);
   if (!customer) throw new Error(`Customer ${customerId} not found`);
+  await requestWithdrawal(client, amountToScale8(amount), customer.available_cash_account_id, customer.withdrawal_in_progress_account_id);
   const line = await addStatementLine({
     amount,
     credit_debit_indicator: "DBIT",
@@ -750,7 +767,7 @@ export async function apiLoadRun({
         continue;
       }
 
-      const group = buildLoadTransferGroup(action, bank.pending_account_id);
+      const group = buildLoadTransferGroup(action, bank.placement_in_transit_account_id);
       pendingDirectGroups.push(group);
       pendingDirectTransfers += group.transfers.length;
 
@@ -815,33 +832,39 @@ export async function apiCollectFees(amount) {
 export async function apiReconciliation() {
   const accountsById = await lookupLedgerAccounts();
 
-  const clientMoney = getAssetBalance(accountsById, AccountId.CLIENT_MONEY);
+  const clientMoney = getAssetBalance(accountsById, AccountId.SAFEGUARD_POOLED_CASH);
   const operatingCash = getAssetBalance(accountsById, AccountId.OPERATING_CASH);
-  const unattributedReceipts = getCreditBalance(accountsById, AccountId.UNATTRIBUTED_RECEIPTS);
+  const unattributedReceipts = getCreditBalance(accountsById, AccountId.UNIDENTIFIED_RECEIPTS);
   const feeIncome = getCreditBalance(accountsById, AccountId.FEE_INCOME);
 
   let bankPending = 0n;
   let bankSettled = 0n;
   let bankInterestReceivable = 0n;
   for (const bank of getAllBanks()) {
-    bankPending += getAssetBalance(accountsById, bank.pending_account_id);
-    bankSettled += getAssetBalance(accountsById, bank.settled_account_id);
-    bankInterestReceivable += getAssetBalance(accountsById, bank.interest_receivable_account_id);
+    bankPending += getAssetBalance(accountsById, bank.placement_in_transit_account_id);
+    bankSettled += getAssetBalance(accountsById, bank.principal_placed_account_id);
+    bankInterestReceivable += getAssetBalance(accountsById, bank.interest_due_account_id);
   }
 
-  let customerHolding = 0n;
+  let customerAvailableCash = 0n;
+  let withdrawalInProgress = 0n;
+  let subscriptionInProgress = 0n;
   let productPrincipal = 0n;
   let accruedInterestPayable = 0n;
+  let redemptionInProgress = 0n;
   for (const customer of getAllCustomers()) {
-    customerHolding += getCreditBalance(accountsById, customer.holding_account_id);
+    customerAvailableCash += getCreditBalance(accountsById, customer.available_cash_account_id);
+    withdrawalInProgress += getCreditBalance(accountsById, customer.withdrawal_in_progress_account_id);
     for (const position of Object.values(customer.product_positions)) {
-      productPrincipal += getCreditBalance(accountsById, position.principal_account_id);
-      accruedInterestPayable += getCreditBalance(accountsById, position.accrued_interest_account_id);
+      subscriptionInProgress += getCreditBalance(accountsById, position.subscription_in_progress_account_id);
+      productPrincipal += getCreditBalance(accountsById, position.principal_invested_account_id);
+      accruedInterestPayable += getCreditBalance(accountsById, position.interest_accrued_account_id);
+      redemptionInProgress += getCreditBalance(accountsById, position.redemption_in_progress_account_id);
     }
   }
 
   const totalAssets = clientMoney + operatingCash + bankPending + bankSettled + bankInterestReceivable;
-  const customerLiabilities = unattributedReceipts + customerHolding + productPrincipal + accruedInterestPayable;
+  const customerLiabilities = unattributedReceipts + customerAvailableCash + withdrawalInProgress + subscriptionInProgress + productPrincipal + accruedInterestPayable + redemptionInProgress;
   const liabilitiesAndIncome = customerLiabilities + feeIncome;
   const customerBackingAssets = totalAssets - feeIncome;
 
@@ -878,9 +901,12 @@ export async function apiReconciliation() {
       bank_settled: formatScale8(bankSettled),
       bank_interest_receivable: formatScale8(bankInterestReceivable),
       unattributed_receipts: formatScale8(unattributedReceipts),
-      customer_holding: formatScale8(customerHolding),
+      customer_available_cash: formatScale8(customerAvailableCash),
+      withdrawal_in_progress: formatScale8(withdrawalInProgress),
+      subscription_in_progress: formatScale8(subscriptionInProgress),
       product_principal: formatScale8(productPrincipal),
       accrued_interest_payable: formatScale8(accruedInterestPayable),
+      redemption_in_progress: formatScale8(redemptionInProgress),
       fee_income: formatScale8(feeIncome),
     },
   };
@@ -888,41 +914,49 @@ export async function apiReconciliation() {
 
 export async function apiBalances() {
   const systemIds = [
-    AccountId.CLIENT_MONEY,
-    AccountId.UNATTRIBUTED_RECEIPTS,
+    AccountId.SAFEGUARD_POOLED_CASH,
+    AccountId.UNIDENTIFIED_RECEIPTS,
     AccountId.OPERATING_CASH,
     AccountId.FEE_INCOME,
   ];
   const systemNames = {
-    [AccountId.CLIENT_MONEY.toString()]: "Client money pool",
-    [AccountId.UNATTRIBUTED_RECEIPTS.toString()]: "Unattributed receipts",
+    [AccountId.SAFEGUARD_POOLED_CASH.toString()]: "Safeguard pooled cash",
+    [AccountId.UNIDENTIFIED_RECEIPTS.toString()]: "Unidentified receipts",
     [AccountId.OPERATING_CASH.toString()]: "Operating cash",
     [AccountId.FEE_INCOME.toString()]: "Fee income",
   };
   const assetIds = new Set([
-    AccountId.CLIENT_MONEY.toString(),
+    AccountId.SAFEGUARD_POOLED_CASH.toString(),
     AccountId.OPERATING_CASH.toString(),
   ]);
   const customerLabels = new Map();
   const lookupIds = [...systemIds];
 
   for (const bank of getAllBanks()) {
-    lookupIds.push(bank.pending_account_id, bank.settled_account_id, bank.interest_receivable_account_id);
-    systemNames[bank.pending_account_id.toString()] = `${bank.bank_id} cash pending placement`;
-    systemNames[bank.settled_account_id.toString()] = `${bank.bank_id} cash at bank`;
-    systemNames[bank.interest_receivable_account_id.toString()] = `${bank.bank_id} interest receivable`;
-    assetIds.add(bank.pending_account_id.toString());
-    assetIds.add(bank.settled_account_id.toString());
-    assetIds.add(bank.interest_receivable_account_id.toString());
+    lookupIds.push(bank.placement_in_transit_account_id, bank.principal_placed_account_id, bank.interest_due_account_id);
+    systemNames[bank.placement_in_transit_account_id.toString()] = `${bank.bank_id} cash pending placement`;
+    systemNames[bank.principal_placed_account_id.toString()] = `${bank.bank_id} cash at bank`;
+    systemNames[bank.interest_due_account_id.toString()] = `${bank.bank_id} interest receivable`;
+    assetIds.add(bank.placement_in_transit_account_id.toString());
+    assetIds.add(bank.principal_placed_account_id.toString());
+    assetIds.add(bank.interest_due_account_id.toString());
   }
 
   for (const customer of getAllCustomers()) {
-    lookupIds.push(customer.holding_account_id);
-    customerLabels.set(customer.holding_account_id.toString(), `${customer.customer_id} holding`);
+    lookupIds.push(customer.available_cash_account_id, customer.withdrawal_in_progress_account_id);
+    customerLabels.set(customer.available_cash_account_id.toString(), `${customer.customer_id} available cash`);
+    customerLabels.set(customer.withdrawal_in_progress_account_id.toString(), `${customer.customer_id} withdrawal in progress`);
     for (const [productId, position] of Object.entries(customer.product_positions)) {
-      lookupIds.push(position.principal_account_id, position.accrued_interest_account_id);
-      customerLabels.set(position.principal_account_id.toString(), `${customer.customer_id} ${productId} principal`);
-      customerLabels.set(position.accrued_interest_account_id.toString(), `${customer.customer_id} ${productId} interest payable`);
+      lookupIds.push(
+        position.subscription_in_progress_account_id,
+        position.principal_invested_account_id,
+        position.interest_accrued_account_id,
+        position.redemption_in_progress_account_id
+      );
+      customerLabels.set(position.subscription_in_progress_account_id.toString(), `${customer.customer_id} ${productId} subscription in progress`);
+      customerLabels.set(position.principal_invested_account_id.toString(), `${customer.customer_id} ${productId} principal invested`);
+      customerLabels.set(position.interest_accrued_account_id.toString(), `${customer.customer_id} ${productId} interest accrued`);
+      customerLabels.set(position.redemption_in_progress_account_id.toString(), `${customer.customer_id} ${productId} redemption in progress`);
     }
   }
 

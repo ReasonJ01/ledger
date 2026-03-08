@@ -26,26 +26,33 @@ function createAccount(accountId, code, flags) {
 export async function createBank(client, bankId) {
   if (byBankId.has(bankId)) throw new Error(`Bank ${bankId} already exists`);
 
-  const pendingAccountId = id();
-  const settledAccountId = id();
-  const interestReceivableAccountId = id();
-  const pendingAccount = createAccount(
-    pendingAccountId,
-    AccountCode.ASSET_BANK_PENDING,
+  const placementInTransitAccountId = id();
+  const principalPlacedAccountId = id();
+  const interestDueAccountId = id();
+  const redemptionInTransitAccountId = id();
+  const placementInTransitAccount = createAccount(
+    placementInTransitAccountId,
+    AccountCode.ASSET_BANK_PLACEMENT_IN_TRANSIT,
     AccountFlags.linked | AccountFlags.credits_must_not_exceed_debits
   );
-  const settledAccount = createAccount(
-    settledAccountId,
-    AccountCode.ASSET_BANK_SETTLED,
+  const principalPlacedAccount = createAccount(
+    principalPlacedAccountId,
+    AccountCode.ASSET_BANK_PRINCIPAL_PLACED,
     AccountFlags.linked | AccountFlags.credits_must_not_exceed_debits
   );
-  const interestReceivableAccount = createAccount(
-    interestReceivableAccountId,
-    AccountCode.ASSET_BANK_INTEREST_RECEIVABLE,
+  const interestDueAccount = createAccount(
+    interestDueAccountId,
+    AccountCode.ASSET_BANK_INTEREST_DUE,
     AccountFlags.credits_must_not_exceed_debits
   );
 
-  const errors = await client.createAccounts([pendingAccount, settledAccount, interestReceivableAccount]);
+  const redemptionInTransitAccount = createAccount(
+    redemptionInTransitAccountId,
+    AccountCode.ASSET_BANK_REDEMPTION_IN_TRANSIT,
+    AccountFlags.credits_must_not_exceed_debits
+  );
+
+  const errors = await client.createAccounts([placementInTransitAccount, principalPlacedAccount, interestDueAccount, redemptionInTransitAccount]);
   for (const err of errors) {
     if (err.result !== CreateAccountError.exists && err.result !== CreateAccountError.linked_event_failed) {
       throw new Error(formatAccountError(err.result));
@@ -54,9 +61,10 @@ export async function createBank(client, bankId) {
 
   const bank = {
     bank_id: bankId,
-    pending_account_id: pendingAccountId,
-    settled_account_id: settledAccountId,
-    interest_receivable_account_id: interestReceivableAccountId,
+    placement_in_transit_account_id: placementInTransitAccountId,
+    principal_placed_account_id: principalPlacedAccountId,
+    interest_due_account_id: interestDueAccountId,
+    redemption_in_transit_account_id: redemptionInTransitAccountId,
   };
   byBankId.set(bankId, bank);
   return bank;
