@@ -142,12 +142,106 @@ Then a nominated withdrawal statement debit (`event_type = "CUSTOMER_WITHDRAWAL_
 
 ## TigerBeetle Features Used In This Demo
 
-- Linked events are the most important one here. They let one business action post multiple ledger effects atomically. In this demo, product allocation and product redemption each post multiple legs in a single linked batch, so intermediate states cannot drift from cash or customer liabilities.
-- Account flags and balance constraints are useful because this model mixes assets, liabilities, and income. Customer liability accounts fail differently from cash asset accounts, and TigerBeetle lets us encode that at the account level.
-- Idempotent transfer submission matters because statement processing is retry-heavy. Statement lines carry fixed transfer IDs and retries return `exists` instead of duplicating money movement.
-- Batched requests matter because this platform is bursty: inbound payments, settlements, withdrawals, and accrual writes happen in volume.
-- Integer amounts and 128-bit IDs matter because money needs exact arithmetic and the ledger needs native TigerBeetle identifiers.
+### 1. Linked transfer chains (atomic multi-leg posting)
 
+What it is:
+TigerBeetle lets us mark transfer events as `linked` so a whole chain either commits together or fails together.
+
+How this demo uses it:
+
+- Product allocation posts three legs in one atomic chain:
+  - available cash -> subscription in progress
+  - subscription in progress -> principal invested
+  - bank placement in transit -> safeguard pooled cash
+- Product redemption posts two legs in one atomic chain:
+  - principal invested -> redemption in progress
+  - redemption in progress -> available cash
+- Transfer linking is encoded in `TransferFlags.linked` and applied by `createLinkedTransfers()` / `createTransferBatchFromGroups()`.
+
+Why it is useful here:
+These flows have intermediate state accounts. Linking prevents partial progress where one leg posts but another does not, which would otherwise desynchronise customer liabilities from platform assets.
+
+### 2. Linked account creation (atomic account provisioning)
+
+What it is:
+The same `linked` idea can be applied when creating accounts.
+
+How this demo uses it:
+
+- Customer provisioning links creation of `available_cash` and `withdrawal_in_progress`.
+- Bank provisioning links a chain of core accounts (`cash pending placement` -> `cash at bank` -> `interest due`) so they are created as one atomic unit.
+- The code accepts `linked_event_failed` as an expected cascade result when one item in a linked create fails.
+
+Why it is useful here:
+We avoid half-created entities (for example, a customer with available cash but no withdrawal account), which simplifies operational recovery and keeps object state consistent.
+
+### 3. Balance-limit flags on accounts (ledger-level invariants)
+
+What it is:
+TigerBeetle account flags enforce balance constraints at write time.
+
+How this demo uses it:
+
+- Asset accounts use `credits_must_not_exceed_debits`.
+- Liability and income accounts use `debits_must_not_exceed_credits`.
+- These flags are set at account creation and validated by TigerBeetle on every transfer.
+
+Why it is useful here:
+The accounting rules are enforced inside the ledger engine itself, not only in app code, reducing the chance of invalid states under retries, race conditions, or future code changes.
+
+### 4. Idempotent submission with stable transfer IDs
+
+What it is:
+TigerBeetle rejects duplicate transfer IDs with `CreateTransferError.exists`.
+
+How this demo uses it:
+
+- Statement simulator lines generate transfer IDs up front and store them in `transfer_ids`.
+- Reactor processing reuses those exact IDs when posting.
+- Retry paths treat `exists` as success-equivalent.
+
+Why it is useful here:
+Statement processing is naturally retry-heavy. Stable IDs guarantee "at most once" money movement even if the same line is replayed.
+
+### 5. High-throughput batched writes with adaptive split
+
+What it is:
+TigerBeetle is designed for batched operations; this demo submits grouped transfers in batches.
+
+How this demo uses it:
+
+- Interest accrual, statement processing, and load-mode direct transfers all post via batch helpers.
+- If a batch is too large ("Too much data provided on this batch"), the helper splits the batch recursively and retries.
+- Batching is done by business group so linked chains stay intact.
+
+Why it is useful here:
+We preserve throughput under bursty workloads without sacrificing atomic group semantics.
+
+### 6. Batched account lookups for balance-heavy operations
+
+What it is:
+Read-side work can also be batched by chunking `lookupAccounts` requests.
+
+How this demo uses it:
+
+- Balance views and accrual preparation collect many account IDs, chunk them, then call `lookupAccounts` per chunk.
+- Account balances are then derived from posted debit/credit totals in memory.
+
+Why it is useful here:
+Large read sets are processed predictably and avoid fragile "one request per account" behavior.
+
+### 7. Structured transfer metadata (`code`, `user_data_128`)
+
+What it is:
+TigerBeetle transfer records include typed classification fields and user-defined metadata.
+
+How this demo uses it:
+
+- `TransferCode` classifies each movement (money received, customer identified, accrual, fee, settlement, withdrawal, etc.).
+- Statement-driven transfers store statement reference IDs in `user_data_128`.
+
+Why it is useful here:
+This gives clean auditability: each posted movement has both business meaning and source-event correlation.
 ## Notes On `src/config.js`
 
 `src/config.js` is effectively the shared ledger vocabulary for the demo, so a lot of the rest of the code makes more sense once you know what is defined there.
