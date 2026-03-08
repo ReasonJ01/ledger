@@ -1,0 +1,107 @@
+# Simulator V2 — New Event Types
+
+Ledger V2 requires the simulator to represent more than just bank statement lines.  
+Some important real-world events change financial state without moving cash.
+
+To support realistic settlement flows, the simulator must emit two new event types.
+
+---
+
+## 1. PLACEMENT_CONFIRMED
+
+### What It Represents
+Confirmation from a partner bank that funds previously sent for investment have been successfully placed.
+
+### Why This Is Needed
+When money is sent to a partner bank, it leaves the safeguarded account immediately.  
+However, the partner bank may confirm the investment later after processing.
+
+This event represents a **status confirmation**, not a cash movement.
+
+### Real-World Analogy
+You wire money to a bank today.  
+Tomorrow they confirm the deposit is active.  
+The confirmation does not move money — it confirms what happened after arrival.
+
+### Ledger Effects
+This event finalizes investment state.
+
+**Customer side**
+- Subscription moves from *in progress* → *invested*
+
+**Cash side**
+- Funds move from *placement in transit* → *principal placed*
+
+### Does Cash Move?
+No.
+
+---
+
+## 2. REDEMPTION_CONFIRMED
+
+### What It Represents
+Confirmation from a partner bank that an investment redemption request has been processed.
+
+### Why This Is Needed
+When a customer redeems an investment, the partner bank must unwind it.  
+This happens before funds are returned to the platform.
+
+This event represents the partner confirming the redemption is processed and funds are being returned.
+
+### Real-World Analogy
+You sell a term deposit.  
+The bank confirms it has been closed.  
+Funds will arrive later.
+
+### Ledger Effects
+This event finalizes investment exit state but does not yet return cash.
+
+**Customer side**
+- Investment moves from *invested* → *redemption in progress*
+
+**Cash side**
+- Funds move from *principal placed* → *redemption in transit*
+
+### Does Cash Move?
+No.
+
+---
+
+# Important Distinction
+
+| Event Type | Represents | Moves Cash? |
+|-----------|------------|-------------|
+| Bank statement credit/debit | Money entering or leaving account | Yes |
+| PLACEMENT_CONFIRMED | Investment status update | No |
+| REDEMPTION_CONFIRMED | Redemption status update | No |
+
+---
+
+# Why These Events Matter
+
+Without confirmation events, the ledger assumes:
+
+> If money was sent or a request was made, it must have completed.
+
+This is unsafe because external institutions can:
+
+- reject transfers
+- delay processing
+- partially settle
+- reverse transactions
+
+Confirmation events allow the ledger to model real-world uncertainty and timing.
+
+---
+
+# Summary
+
+The simulator must support two kinds of external events:
+
+1. **Cash movement events** — bank balance changes  
+2. **Settlement confirmation events** — status updates without cash movement
+
+The new confirmation events are:
+
+- `PLACEMENT_CONFIRMED`
+- `REDEMPTION_CONFIRMED`
